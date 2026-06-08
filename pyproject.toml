@@ -1,0 +1,117 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "scalabath"
+version = "0.1.0"
+description = "JAX-based simulations of open quantum dynamics on lattice systems."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "Pinchen Xie", email = "pinchenxie@lbl.gov" },
+]
+keywords = [
+  "open quantum systems",
+  "quantum dynamics",
+  "lattice systems",
+  "JAX",
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+  "jax>=0.4.30",
+  "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.2",
+  "ipykernel>=6.29",
+  "mypy>=1.10",
+  "pre-commit>=3.7",
+  "pytest>=8.2",
+  "pytest-cov>=5.0",
+  "ruff>=0.5",
+]
+# Linux/CUDA-only extras for Perlmutter or other NVIDIA GPU systems.
+# Use only on systems where the selected CUDA wheel is compatible.
+gpu-cuda13 = [
+  "jax[cuda13]>=0.4.30",
+]
+gpu-cuda12 = [
+  "jax[cuda12]>=0.4.30",
+]
+docs = [
+  "mkdocs>=1.6",
+  "mkdocs-material>=9.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/salinelake/scalabath"
+Repository = "https://github.com/salinelake/scalabath"
+Issues = "https://github.com/salinelake/scalabath/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/scalabath"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --strict-markers --strict-config"
+testpaths = ["tests"]
+markers = [
+  "unit: small CPU-only unit tests",
+  "cpu: longer CPU tests",
+  "gpu: requires a CUDA GPU; normally run on Perlmutter",
+]
+filterwarnings = [
+  "error",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle errors
+  "F",    # pyflakes
+  "I",    # import sorting
+  "B",    # flake8-bugbear
+  "UP",   # pyupgrade
+  "NPY",  # NumPy-specific checks
+]
+ignore = [
+  # Scientific code often uses variables such as H, L, dt, psi, and rho.
+  # Do not enable naming rules until the public notation stabilizes.
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.11"
+packages = ["scalabath"]
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["scalabath"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
