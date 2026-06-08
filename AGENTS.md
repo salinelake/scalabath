@@ -85,7 +85,7 @@ The code is organized into the following modules:
     - `ABAd`: method that computes A B A^\dagger with A and B being operator matrices.
     - `compose`: method that composes a sequence of operators via Kronecker product.
 
-Guidelines: 
+**Guidelines**
 - Use JAX for the implementation of the core kernels.
 - `operators_base.py` and `operators_groups.py` are for definition of the operator and Hamiltonians. They are called only for once to generate the big operator matrices before the simulation starts. So they don't need to be JIT-able.
 - `simulations.py` is the main module for the simulation of the system and environment. It will store the state of the system and the Hamiltonian, jumping operators, and the time-evolution operator as jax arrays. The most time-consuming part of the simulation is `step` method. So it needs to be JIT-able and allows for multi-GPU execution.
