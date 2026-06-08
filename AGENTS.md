@@ -30,8 +30,9 @@ scalabath/
   src/
     scalabath/
       __init__.py
-      models.py
-      operators.py
+      systems.py
+      operators_base.py
+      operators_groups.py
       simulations.py
       utilities.py
   tests/
@@ -49,6 +50,46 @@ scalabath/
 Do not commit large simulation outputs, checkpoints, logs, virtual
 environments, `.jax_cache`, or machine-specific files. Commit small JSON/CSV
 summaries only when they are useful for reproducibility.
+
+## Code Structure
+
+The code is organized into the following modules:
+
+- `systems`: Definition of the physical system.
+    Essential classes and functions:
+    - `PureStatesEnsemble`: Base class for pure state ensembles (PSE), stored as `(batch, hilbert_dim)` arrays. Main methods: `get_pse`, `set_pse`,`normalize`.
+    - `DensityMatrixEnsemble`: Base class for density matrix ensembles (DME), stored as `(batch, hilbert_dim, hilbert_dim)` arrays. Main methods: `get_dme`, `set_dme`,`normalize`.
+
+- `operators_base`: Definition of basic classes of operators. (see inspirations/operator_basis/*.py for inspiration)
+    Essential classes and functions:
+    - `boson`: class for basic bosonic operator matrices: identity, annihilation, creation, number.
+    - `tls`: class for basic Pauli matrices: sigma_x, sigma_y, sigma_z, identity, sigma_plus, sigma_minus.
+    - `tight_binding_1d`: class for basic 1D tight-binding operator matrices: hopping, on-site, identity.
+    - `tight_binding_2d`: class for basic 2D tight-binding operator matrices: hopping, on-site, identity.
+
+- `operators_groups`: Definition of classes for composite operators. (see inspirations/operator_group/*.py for inspiration)
+    Essential classes and functions:
+    - `OperatorGroup`: Base class for general many-body operators acting on a subsystem.
+    - `BosonOperatorGroup`: subclass of `OperatorGroup` for many-body boson operators acting on a bosonic subsystem.
+    - `SpinOperatorGroup`: subclass of `OperatorGroup` for many-body Pauli operators acting on a spin subsystem.
+    - `TightBindingOperatorGroup`: subclass of `OperatorGroup` for tight-binding operators acting on a tight-binding subsystem.
+    - `ComposedOperatorGroups`: subclass of `OperatorGroup` for gluing two or more subsystems together and forming a composite many-body operator that acts on the combined system.
+  
+  All these classes has a method `sum_operators` to sum up the operators in the group and return the total operator matrix. Do not implement the "sample" method like those in the inspiration files (dealing with operators with stochastic coefficients). Here we only need to deal with operators with static coefficients.
+
+- `simulations`: Simulations of the system and environment. Essential classes and functions:
+    - `UnitarySimulation`: unitary time-evolution simulation of the system. Main methods: `add_operator_group_to_hamiltonian` (add a static operator group to the Hamiltonian), `step` (perform a time-step), `observe` (get the expectation value of an operator).
+    - `LindbladSimulation`: Lindblad master equation simulation of the system. Main methods: `add_operator_group_to_hamiltonian` (add a static operator group to the Hamiltonian),`add_operator_group_to_jumping` (add a static operator group to the jumping operators), `step` (perform a time-step), `observe` (get the expectation value of an operator).
+
+- `utilities`: Utilities for the system and environment. Essential classes and functions:
+    - `ABAd`: method that computes A B A^\dagger with A and B being operator matrices.
+    - `compose`: method that composes a sequence of operators via Kronecker product.
+
+Guidelines: 
+- Use JAX for the implementation of the core kernels.
+- `operators_base.py` and `operators_groups.py` are for definition of the operator and Hamiltonians. They are called only for once to generate the big operator matrices before the simulation starts. So they don't need to be JIT-able.
+- `simulations.py` is the main module for the simulation of the system and environment. It will store the state of the system and the Hamiltonian, jumping operators, and the time-evolution operator as jax arrays. The most time-consuming part of the simulation is `step` method. So it needs to be JIT-able and allows for multi-GPU execution.
+- What we want to achieve is to (1) allow users to construct physical systems that combines several subsystems, for example, a tight binding system and a bosonic environment containing several modes, and (2) implement efficient, multi-GPU simulations of the physical system with unitary time-evolution or Lindblad master equation time-evolution.
 
 ## Local development commands
 
