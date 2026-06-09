@@ -20,7 +20,7 @@ class boson:
         dtype: Complex dtype for all matrices.
     """
 
-    def __init__(self, nmax: int, *, dtype: Any = jnp.complex128) -> None:
+    def __init__(self, nmax: int, *, dtype: Any = jnp.complex64) -> None:
         self.nmax = nonnegative_int(nmax, "nmax")
         self.dim = self.nmax + 1
         self.dtype = complex_dtype(dtype)
@@ -57,17 +57,6 @@ class boson:
         except KeyError as exc:
             raise ValueError(f"unknown boson operator descriptor {descriptor!r}") from exc
 
-    def get_sequence_ops(self, descriptor_sequence: str) -> list[Array]:
-        """Return local operators for a sequence such as ``"UDI"``."""
-
-        return [self.get_operator(descriptor) for descriptor in descriptor_sequence]
-
-    def get_composite_ops(self, descriptor_sequence: str) -> Array:
-        """The same as the Kronecker product for a multi-mode, same-level operator sequence. """
-
-        return compose(self.get_sequence_ops(descriptor_sequence))
-
-
 class tls:
     """Two-level-system operators.
 
@@ -75,7 +64,7 @@ class tls:
     as JAX arrays with shape ``(2, 2)``.
     """
 
-    def __init__(self, *, dtype: Any = jnp.complex128) -> None:
+    def __init__(self, *, dtype: Any = jnp.complex64) -> None:
         self.dtype = complex_dtype(dtype)
 
         self.sigma_x = jnp.asarray([[0, 1], [1, 0]], dtype=self.dtype)
@@ -110,17 +99,6 @@ class tls:
         except KeyError as exc:
             raise ValueError(f"unknown two-level operator descriptor {descriptor!r}") from exc
 
-    def get_sequence_ops(self, descriptor_sequence: str) -> list[Array]:
-        """Return local operators for a sequence such as ``"XIY"``."""
-
-        return [self.get_operator(descriptor) for descriptor in descriptor_sequence]
-
-    def get_composite_ops(self, descriptor_sequence: str) -> Array:
-        """Return the Kronecker product for a multi-spin operator sequence."""
-
-        return compose(self.get_sequence_ops(descriptor_sequence))
-
-
 class tight_binding_1d:
     """Single-particle tight-binding operators on a 1D lattice.
 
@@ -135,7 +113,7 @@ class tight_binding_1d:
         n_sites: int,
         *,
         periodic: bool = True,
-        dtype: Any = jnp.complex128,
+        dtype: Any = jnp.complex64,
     ) -> None:
         self.n_sites = positive_int(n_sites, "n_sites")
         if self.n_sites == 1:
@@ -220,7 +198,7 @@ class tight_binding_1d:
             total = total + self.hopping(neighbor, site, jnp.conjugate(amplitude))
         return total
 
-    def get_composite_ops(self, descriptor_sequence: str) -> Array:
+    def get_operator(self, descriptor: str) -> Array:
         """Return a sequence-defined one-particle tight-binding operator. Note that this function does not construct a many-body operator. 
 
         ``"X"`` denotes identity on a site, ``"N"`` an on-site projector,
@@ -229,30 +207,31 @@ class tight_binding_1d:
         non-``"X"`` character.
         Example:
             >>> tb = tight_binding_1d(3)
-            >>> tb.get_composite_ops("XRX")
+            >>> tb.get_operator("XRX")
             Array([[0.+0.j, 1.+0.j, 0.+0.j],
                    [0.+0.j, 0.+0.j, 0.+0.j],
-                   [0.+0.j, 0.+0.j, 0.+0.j]], dtype=complex128)
+                   [0.+0.j, 0.+0.j, 0.+0.j]], dtype=complex64)
         """
 
-        if len(descriptor_sequence) != self.n_sites:
-            raise ValueError("descriptor_sequence length must equal n_sites")
-        if not all(descriptor in self.descriptors_dict for descriptor in descriptor_sequence):
-            raise ValueError("only L, N, R, and X are allowed in descriptor_sequence")
+        if len(descriptor) != self.n_sites:
+            raise ValueError("descriptor length must equal n_sites")
 
-        marked_sites = [idx for idx, descriptor in enumerate(descriptor_sequence) if descriptor != "X"]
+        marked_sites = [idx for idx, mark in enumerate(descriptor) if mark != "X"]
         if not marked_sites:
             return self.identity
         if len(marked_sites) > 1:
-            raise ValueError("descriptor_sequence may contain at most one non-X operator")
+            raise ValueError("descriptor may contain at most one non-X operator")
 
         site = marked_sites[0]
-        descriptor = descriptor_sequence[site]
-        if descriptor == "L":
+        mark = descriptor[site]
+        if mark == "L":
             return self.left(site)
-        if descriptor == "R":
+        elif mark == "R":
             return self.right(site)
-        return self.on_site(site)
+        elif mark == "N":
+            return self.on_site(site)
+        else:
+            raise ValueError(f"unknown tight-binding operator descriptor {mark!r}")
 
 
 class tight_binding_2d:
@@ -264,7 +243,7 @@ class tight_binding_2d:
         ny: int,
         *,
         periodic: bool = True,
-        dtype: Any = jnp.complex128,
+        dtype: Any = jnp.complex64,
     ) -> None:
         self.nx = positive_int(nx, "nx")
         self.ny = positive_int(ny, "ny")
@@ -342,7 +321,7 @@ class tight_binding_2d:
                     total = total + self.hopping((nx, ny), (x, y), jnp.conjugate(amplitude))
         return total
 
-    def get_composite_ops(self, descriptor_sequence: str) -> Array:
+    def get_operator(self, descriptor_sequence: str) -> Array:
         """Return a sequence-defined one-particle tight-binding operator. Note that this function does not construct a many-body operator. 
 
         ``"X"`` denotes identity on a site, ``"N"`` an on-site projector,
@@ -350,7 +329,7 @@ class tight_binding_2d:
         the marked site to the right. The sequence must contain zero or one
         non-``"X"`` character.
         """
-        raise NotImplementedError("get_composite_ops has not been implemented for tight_binding_2d")
+        raise NotImplementedError("get_operator has not been implemented for tight_binding_2d")
 
 
 __all__ = ["boson", "tight_binding_1d", "tight_binding_2d", "tls"]

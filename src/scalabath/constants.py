@@ -1,5 +1,4 @@
 
-import torch as th
 import numpy as np
  
 class Constants(object):

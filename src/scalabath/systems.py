@@ -28,7 +28,7 @@ class PureStatesEnsemble:
         hilbert_dim: int,
         batch_size: int = 1,
         *,
-        dtype: Any = jnp.complex128,
+        dtype: Any = jnp.complex64,
     ) -> None:
         self.hilbert_dim = positive_int(hilbert_dim, "hilbert_dim")
         self.batch_size = positive_int(batch_size, "batch_size")
@@ -117,7 +117,7 @@ class DensityMatrixEnsemble:
         hilbert_dim: int,
         batch_size: int = 1,
         *,
-        dtype: Any = jnp.complex128,
+        dtype: Any = jnp.complex64,
     ) -> None:
         self.hilbert_dim = positive_int(hilbert_dim, "hilbert_dim")
         self.batch_size = positive_int(batch_size, "batch_size")

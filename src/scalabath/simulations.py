@@ -18,18 +18,6 @@ class _OperatorGroupLike(Protocol):
 
     def sum_operators(self) -> Array: ...
 
-
-def _as_pure_state_batch(initial_state: Any, dtype: Any) -> Array:
-    if isinstance(initial_state, PureStatesEnsemble):
-        state = initial_state.get_pse()
-    else:
-        state = jnp.asarray(initial_state, dtype=dtype)
-    if state.ndim == 1:
-        state = state[None, :]
-    if state.ndim != 2:
-        raise ValueError("pure states must have shape (hilbert_dim,) or (batch, hilbert_dim)")
-    return jnp.asarray(state, dtype=dtype)
-
 def _as_density_batch(initial_density_matrix: Any, dtype: Any) -> Array:
     if isinstance(initial_density_matrix, DensityMatrixEnsemble):
         density_matrix = initial_density_matrix.get_dme()
@@ -102,15 +90,17 @@ class UnitarySimulation:
 
     def __init__(
         self,
-        initial_state: Any,
+        hilbert_dim: int,
+        batch_size: int,
         dt: float,
         *,
         hamiltonian: Any | None = None,
-        dtype: Any = jnp.complex128,
+        dtype: Any = jnp.complex64,
     ) -> None:
         self.dtype = jnp.dtype(dtype)
-        self.state = _as_pure_state_batch(initial_state, self.dtype)
-        self.batch_size, self.hilbert_dim = self.state.shape
+        self.hilbert_dim = positive_int(hilbert_dim, "hilbert_dim")
+        self.batch_size = positive_int(batch_size, "batch_size")
+        self._pse = PureStatesEnsemble(hilbert_dim=self.hilbert_dim, batch_size=self.batch_size, dtype=self.dtype)
         self.dt = jnp.asarray(dt)
         if hamiltonian is not None:
             self.hamiltonian = _as_operator_matrix(hamiltonian, self.hilbert_dim, self.batch_size, self.dtype)
@@ -118,7 +108,17 @@ class UnitarySimulation:
             self.hamiltonian = jnp.zeros((self.batch_size, self.hilbert_dim, self.hilbert_dim), dtype=self.dtype)
         self._evo_exact = None ## only computed when the system is small enough to allow for exact integration. shape: (batch_size, hilbert_dim, hilbert_dim)
         self._evo_AB = None ## shape: (batch_size, hilbert_dim, hilbert_dim)
-
+    
+    @property
+    def state(self) -> Array:
+        """Return the pure state ensemble with shape (batch_size, hilbert_dim)."""
+        return self._pse.get_pse()
+    
+    @state.setter
+    def state(self, state: Array) -> None:
+        """Set the pure state ensemble with shape (batch_size, hilbert_dim)."""
+        self._pse.set_pse(state)
+    
     def add_operator_group_to_hamiltonian(self, operator_group: _OperatorGroupLike) -> None:
         """Add a static operator group to the Hamiltonian."""
 
@@ -174,10 +174,6 @@ class UnitarySimulation:
         matrix = _as_operator_matrix(operator, self.hilbert_dim, self.batch_size, self.dtype)
         return batch_expectation_pure(self.state, matrix)
 
-    def get_state(self) -> Array:
-        """Return the current pure-state ensemble."""
-
-        return self.state
 
 
 class LindbladSimulation:
@@ -191,17 +187,18 @@ class LindbladSimulation:
 
     def __init__(
         self,
-        initial_density_matrix: Any,
+        hilbert_dim: int,
+        batch_size: int,
         dt: float,
         *,
         hamiltonian: Any | None = None,
         jump_operators: Any | None = None,
-        dtype: Any = jnp.complex128,
+        dtype: Any = jnp.complex64,
     ) -> None:
         self.dtype = jnp.dtype(dtype)
-        self.density_matrices = _as_density_batch(initial_density_matrix, self.dtype)
-        self.batch_size = self.density_matrices.shape[0]
-        self.hilbert_dim = self.density_matrices.shape[1]
+        self.hilbert_dim = positive_int(hilbert_dim, "hilbert_dim")
+        self.batch_size = positive_int(batch_size, "batch_size")
+        self._dme = DensityMatrixEnsemble(hilbert_dim=self.hilbert_dim, batch_size=self.batch_size, dtype=self.dtype)
         self.dt = jnp.asarray(dt)
         if hamiltonian is not None:
             self.hamiltonian = _as_operator_matrix(hamiltonian, self.hilbert_dim, self.batch_size, self.dtype)
@@ -211,6 +208,16 @@ class LindbladSimulation:
         if jump_operators is not None:
             for jump_operator in jump_operators:
                 self.add_operator_group_to_jumping(jump_operator)
+
+    @property
+    def density_matrices(self) -> Array:
+        """Return the density-matrix ensemble with shape (batch_size, hilbert_dim, hilbert_dim)."""
+        return self._dme.get_dme()
+    
+    @density_matrices.setter
+    def density_matrices(self, density_matrices: Array) -> None:
+        """Set the density-matrix ensemble with shape (batch_size, hilbert_dim, hilbert_dim)."""
+        self._dme.set_dme(density_matrices)
 
     def add_operator_group_to_hamiltonian(self, operator_group: _OperatorGroupLike) -> None:
         """Add a static operator group to the Hamiltonian."""
@@ -247,11 +254,6 @@ class LindbladSimulation:
 
         matrix = _as_operator_matrix(operator, self.hilbert_dim, self.batch_size, self.dtype)
         return batch_expectation_density(self.density_matrices, matrix)
-
-    def get_state(self) -> Array:
-        """Return the current density-matrix ensemble."""
-
-        return self.density_matrices
 
 
 __all__ = ["LindbladSimulation", "UnitarySimulation"]

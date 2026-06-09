@@ -59,7 +59,7 @@ def ABAd(A: Array, B: Array) -> Array:
     return A @ B @ adjoint(A)
 
 
-def compose(operators: Sequence[Array]) -> Array:
+def compose_rank_2(operators: Sequence[Array]) -> Array:
     """Compose operators with a Kronecker product.
 
     Args:
@@ -86,6 +86,39 @@ def compose(operators: Sequence[Array]) -> Array:
             raise ValueError("compose only accepts rank-2 operators")
         result = jnp.kron(result, operator)
     return result
+
+def compose(operators: Sequence[Array]) -> Array:
+    """Compose operators with a Kronecker product.
+
+    Args:
+        operators: Non-empty sequence of rank-2 or rank-3 arrays. The first operator acts
+            on the leftmost subsystem in the product Hilbert space.
+
+    Returns:
+        Kronecker product of all input operators.
+
+    Raises:
+        ValueError: If no operators are provided or an operator is not rank 2 or rank 3.
+    """
+
+    ops = tuple(jnp.asarray(operator) for operator in operators)
+    if not ops:
+        raise ValueError("compose requires at least one operator")
+    
+    for operator in ops:
+        if operator.ndim != ops[0].ndim:
+            raise ValueError("compose only accepts operators with the same rank")
+    if ops[0].ndim == 2:
+        return compose_rank_2(ops)
+    elif ops[0].ndim == 3:
+        batch_size = ops[0].shape[0]
+        result = []
+        for batch_idx in range(batch_size):
+            result.append(compose_rank_2([op[batch_idx] for op in ops]))
+        result = jnp.stack(result, axis=0)
+        return result
+    else:
+        raise ValueError("compose only accepts rank-2 or rank-3 operators")
 
 
 def batch_trace(density_matrices: Array) -> Array:
