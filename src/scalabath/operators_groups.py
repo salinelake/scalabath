@@ -1,4 +1,3 @@
-"""Operator-group helpers for building static Hamiltonian terms."""
 
 from __future__ import annotations
 
@@ -13,6 +12,9 @@ from jax import Array
 from scalabath.operators_base import boson, tight_binding_1d, tls
 from scalabath.utilities import compose, positive_int, nonnegative_int, complex_dtype
 
+############################################################################################
+###################### Basic classes for building many-body operators ######################
+############################################################################################
 
 class OperatorGroup:
     """Base class for a static sum of operators on one subsystem.
@@ -64,8 +66,6 @@ class OperatorGroup:
             total_ops: Array, the total operator matrix of shape (self.hilbert_dim, self.hilbert_dim).
         """
         raise NotImplementedError("sum_operators is not implemented in the base class")
-    
-
 
 class BosonOperatorGroup(OperatorGroup):
     """Static operator group for a multi-mode bosonic subsystem."""
@@ -106,6 +106,26 @@ class BosonOperatorGroup(OperatorGroup):
                 raise ValueError(f"unknown boson operator descriptor {d!r}")
         self._descriptors.append(descriptor)
         self._prefactors.append(prefactor)
+        return
+    
+    def add_harmonic_operators(self, omega: Array) -> None:
+        """Add harmonic energy terms :math:`\sum_i \omega_i b_i^\dagger b_i` to the group.
+        Args:
+            omega: Array, the frequency of the harmonic oscillator of shape (self.num_modes,) or (self.batch_size, self.num_modes).
+        """
+        if omega.shape[-1] != self.num_modes:
+            raise ValueError("omega shape must equal (num_modes,) or (batch_size, num_modes)")
+        if omega.ndim == 2:
+            if omega.shape[0] != self.batch_size:
+                raise ValueError("omega shape must equal (batch_size, num_modes)")
+            _omega = omega
+        elif omega.ndim == 1:
+            _omega = omega[None, :].repeat(self.batch_size, axis=0)
+        for idx in range(self.num_modes):
+            descriptor = ["I"] * self.num_modes
+            descriptor[idx] = "N"
+            self._descriptors.append("".join(descriptor))
+            self._prefactors.append(_omega[:, idx])
         return
 
     def sum_operators(self) -> Array:
@@ -192,6 +212,38 @@ class TightBindingChainOperatorGroup(OperatorGroup):
         self._prefactors.append(prefactor)
         return
 
+    def add_hopping_operators(self, amplitude: Array) -> None:
+        """Add hopping operators :math:`\sum_i t (L_i + R_i)` to the group.
+        Args:
+            amplitude: Array, the hopping amplitude of shape (self.batch_size,).
+        """
+        if amplitude.shape[0] != self.batch_size:
+            raise ValueError("amplitude shape must equal batch_size")
+        for site in range(self.n_sites):
+            descriptor = ["X"] * self.n_sites
+            descriptor[site] = "L"
+            self._descriptors.append("".join(descriptor))
+            self._prefactors.append(amplitude)
+            descriptor = ["X"] * self.n_sites
+            descriptor[site] = "R"
+            self._descriptors.append("".join(descriptor))
+            self._prefactors.append(amplitude)
+        return
+    
+    def add_onsite_operators(self, amplitude: Array) -> None:
+        """Add onsite operators :math:`\sum_i t N_i` to the group.
+        Args:
+            amplitude: Array, the onsite amplitude of shape (self.batch_size,).
+        """
+        if amplitude.shape[0] != self.batch_size:
+            raise ValueError("amplitude shape must equal batch_size")
+        for site in range(self.n_sites):
+            descriptor = ["X"] * self.n_sites
+            descriptor[site] = "N"
+            self._descriptors.append("".join(descriptor))
+            self._prefactors.append(amplitude)
+        return
+
     def sum_operators(self) -> Array:
         """Sum up the operators in the group. This overrides the base class method.
         Returns:
@@ -238,6 +290,10 @@ class ComposedOperatorGroups(OperatorGroup):
         """Return the tensor product of subsystem group sums."""
         all_groups = [group.sum_operators() for group in self.operator_groups]
         return compose(all_groups)
+
+
+
+
 
 __all__ = [
     "BosonOperatorGroup",

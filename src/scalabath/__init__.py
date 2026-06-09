@@ -6,7 +6,7 @@ from scalabath.operators_groups import (
     ComposedOperatorGroups,
     OperatorGroup,
     SpinOperatorGroup,
-    TightBindingOperatorGroup,
+    TightBindingChainOperatorGroup,
 )
 from scalabath.simulations import LindbladSimulation, UnitarySimulation
 from scalabath.systems import DensityMatrixEnsemble, PureStatesEnsemble
@@ -24,7 +24,7 @@ __all__ = [
     "OperatorGroup",
     "PureStatesEnsemble",
     "SpinOperatorGroup",
-    "TightBindingOperatorGroup",
+    "TightBindingChainOperatorGroup",
     "UnitarySimulation",
     "__version__",
     "boson",

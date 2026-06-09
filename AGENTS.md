@@ -60,22 +60,22 @@ The code is organized into the following modules:
     - `PureStatesEnsemble`: Base class for pure state ensembles (PSE), stored as `(batch, hilbert_dim)` arrays. Main methods: `get_pse`, `set_pse`,`normalize`.
     - `DensityMatrixEnsemble`: Base class for density matrix ensembles (DME), stored as `(batch, hilbert_dim, hilbert_dim)` arrays. Main methods: `get_dme`, `set_dme`,`normalize`.
 
-- `operators_base`: Definition of basic classes of operators. (see inspirations/operator_basis/*.py for inspiration)
+- `operators_base`: Definition of basic classes of operators. 
     Essential classes and functions:
     - `boson`: class for basic bosonic operator matrices: identity, annihilation, creation, number.
     - `tls`: class for basic Pauli matrices: sigma_x, sigma_y, sigma_z, identity, sigma_plus, sigma_minus.
     - `tight_binding_1d`: class for basic 1D tight-binding operator matrices: hopping, on-site, identity.
     - `tight_binding_2d`: class for basic 2D tight-binding operator matrices: hopping, on-site, identity.
 
-- `operators_groups`: Definition of classes for composite operators. (see inspirations/operator_group/*.py for inspiration)
+- `operators_groups`: Definition of classes for composite operators. 
     Essential classes and functions:
     - `OperatorGroup`: Base class for general many-body operators acting on a subsystem.
     - `BosonOperatorGroup`: subclass of `OperatorGroup` for many-body boson operators acting on a bosonic subsystem.
     - `SpinOperatorGroup`: subclass of `OperatorGroup` for many-body Pauli operators acting on a spin subsystem.
-    - `TightBindingOperatorGroup`: subclass of `OperatorGroup` for tight-binding operators acting on a tight-binding subsystem.
+    - `TightBindingChainOperatorGroup`: subclass of `OperatorGroup` for tight-binding operators acting on a tight-binding chain subsystem.
     - `ComposedOperatorGroups`: subclass of `OperatorGroup` for gluing two or more subsystems together and forming a composite many-body operator that acts on the combined system.
   
-  All these classes has a method `sum_operators` to sum up the operators in the group and return the total operator matrix. Do not implement the "sample" method like those in the inspiration files (dealing with operators with stochastic coefficients). Here we only need to deal with operators with static coefficients.
+  All these classes has a method `sum_operators` to sum up the operators in the group and return the total operator matrix.
 
 - `simulations`: Simulations of the system and environment. Essential classes and functions:
     - `UnitarySimulation`: unitary time-evolution simulation of the system. Main methods: `add_operator_group_to_hamiltonian` (add a static operator group to the Hamiltonian), `step` (perform a time-step), `observe` (get the expectation value of an operator).
@@ -87,7 +87,7 @@ The code is organized into the following modules:
 
 **Guidelines**
 - Use JAX for the implementation of the core kernels.
-- `operators_base.py` and `operators_groups.py` are for definition of the operator and Hamiltonians. They are called only for once to generate the big operator matrices before the simulation starts. So they don't need to be JIT-able.
+- `operators_base.py` and `operators_groups.py` are for definition of the basic operator and many-body operator groups. They are called only for once to generate the big operator matrices before the simulation starts. So they don't need to be JIT-able.
 - `simulations.py` is the main module for the simulation of the system and environment. It will store the state of the system and the Hamiltonian, jumping operators, and the time-evolution operator as jax arrays. The most time-consuming part of the simulation is `step` method. So it needs to be JIT-able and allows for multi-GPU execution.
 - What we want to achieve is to (1) allow users to construct physical systems that combines several subsystems, for example, a tight binding system and a bosonic environment containing several modes, and (2) implement efficient, multi-GPU simulations of the physical system with unitary time-evolution or Lindblad master equation time-evolution.
 - The case study used to demonstrate the package: a 1D tight-binding chain (containing L sites) coupled to a bosonic environment. The tight-binding chain has only one particle on it.  The environment contains N bosonic mode with given frequencies. Each site of the tight-binding chain is coupled to the same bosonic environment via different coupling strength. Specifically, the tight-binding chain is described by the Hamiltonian: $H_T=\sum_{j=1}^L \epsilon (c_{j+1}^\dagger c_j + c_j^\dagger c_{j+1}) + V \sum_{j=1}^L n_j$, where $c_j$ is the annihilation operator for the particle on the site $j$ of the tight-binding chain, $n_j$ is the number operator for the particle on the site $j$ of the tight-binding chain, $\epsilon$ is the hopping strength, and $V$ is the on-site interaction strength. The environment is described by the Hamiltonian: $H_B=\sum_{k=1}^N \omega_k b_k^\dagger b_k$, where $b_k$ is the annihilation operator for the mode $k$. The coupling between the tight-binding chain and the environment is described by the Hamiltonian: $H_{SB}=\sum_{j=1}^L \sum_{k=1}^N n_j(g_{jk} b_k + g_{jk}^\dagger b_k^\dagger)$. The time-evolution of the system is described by the Schrodinger equation: $i \frac{d}{dt} |\psi(t)\rangle = H |\psi(t)\rangle$, where $H$ is the total Hamiltonian of the system.  

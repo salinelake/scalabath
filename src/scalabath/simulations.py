@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from typing import Any, Protocol
+import logging
+import time
 
 import jax
 import jax.numpy as jnp
@@ -10,33 +12,16 @@ import jax.scipy as jsp
 from jax import Array
 
 from scalabath.systems import DensityMatrixEnsemble, PureStatesEnsemble
-from scalabath.utilities import batch_expectation_density, batch_expectation_pure, positive_int
-
-
-class _OperatorGroupLike(Protocol):
-    hilbert_dim: int
-
-    def sum_operators(self) -> Array: ...
-
-def _as_density_batch(initial_density_matrix: Any, dtype: Any) -> Array:
-    if isinstance(initial_density_matrix, DensityMatrixEnsemble):
-        density_matrix = initial_density_matrix.get_dme()
-    else:
-        density_matrix = jnp.asarray(initial_density_matrix, dtype=dtype)
-    if density_matrix.ndim == 2:
-        density_matrix = density_matrix[None, :, :]
-    if density_matrix.ndim != 3 or density_matrix.shape[-1] != density_matrix.shape[-2]:
-        raise ValueError(
-            "density matrices must have shape (hilbert_dim, hilbert_dim) "
-            "or (batch, hilbert_dim, hilbert_dim)"
-        )
-    return jnp.asarray(density_matrix, dtype=dtype)
+from scalabath.operators_groups import OperatorGroup
+from scalabath.utilities import batch_expectation_density, positive_int
 
 def _as_operator_matrix(operator: Any, hilbert_dim: int, batch_size: int, dtype: Any) -> Array:
     if hasattr(operator, "sum_operators"):
         matrix = operator.sum_operators()
-    else:
+    elif isinstance(operator, Array):
         matrix = operator
+    else:
+        raise ValueError(f"operator must be an OperatorGroup or an Array, but got {type(operator)}")
     matrix = jnp.asarray(matrix, dtype=dtype)
     expected_shape = (batch_size, hilbert_dim, hilbert_dim)
     if matrix.shape != expected_shape:
@@ -74,6 +59,18 @@ def _lindblad_step_exact(
     dissipative = jax.vmap(one_jump)(jump_operators).sum(axis=0)
     return density_matrices + dt * (coherent + dissipative)
 
+@jax.jit
+def _batch_expectation_pure(states: Array, operator: Array) -> Array:
+    """Compute ``<psi|O|psi>`` for a pure-state ensemble.
+    Args:
+        states: Pure states shaped ``(batch_size, hilbert_dim)``.
+        operator: Operator shaped ``(batch_size, hilbert_dim, hilbert_dim)``.
+    Returns:
+        Expectation values shaped ``(batch_size,)``.
+    """
+    result = (operator * states[:,None,:]).sum(axis=-1)
+    result = (result * jnp.conjugate(states)).sum(axis=-1)
+    return result
 
 class UnitarySimulation:
     """Unitary Schrodinger-equation evolution for pure-state ensembles.
@@ -119,7 +116,7 @@ class UnitarySimulation:
         """Set the pure state ensemble with shape (batch_size, hilbert_dim)."""
         self._pse.set_pse(state)
     
-    def add_operator_group_to_hamiltonian(self, operator_group: _OperatorGroupLike) -> None:
+    def add_operator_group_to_hamiltonian(self, operator_group: OperatorGroup) -> None:
         """Add a static operator group to the Hamiltonian."""
 
         self.hamiltonian = self.hamiltonian + _as_operator_matrix(
@@ -147,32 +144,61 @@ class UnitarySimulation:
         ## compute the AB evolution operator
         self._evo_AB = evo_B * evo_A[:,None,:]
 
-    def step_exact(self, n_steps: int = 1) -> Array:
+    def step_exact(self, n_steps: int = 1, debug: bool = False) -> Array:
         """Advance the pure-state ensemble by ``n_steps`` time steps."""
 
         n_steps = positive_int(n_steps, "n_steps")
         if self._evo_exact is None:
+            if debug:
+                time_start = time.time()
             self._compute_exact_evolution_operator()
-        for _ in range(n_steps):
+            if debug:
+                print(f'Computing exact evolution operator. Time taken: {time.time() - time_start} seconds')
+        for step_idx in range(n_steps):
+            if debug:
+                if step_idx == 0:
+                    print('Stepping exact evolution operator...')
+                    time_start = time.time()
+                if step_idx > 0:
+                    print(f'Time taken for step {step_idx-1}: {time.time() - time_start} seconds')
+                    time_start = time.time()
             self.state = _apply_evolution_operator(self.state, self._evo_exact)
         return self.state
 
-    def step_AB_scheme(self, n_steps: int = 1) -> Array:
+    def step_AB_scheme(self, n_steps: int = 1, debug: bool = False) -> Array:
         """Advance the system by ``n_steps`` time steps using the AB scheme.
         A is the diagonal part of the Hamiltonian, and B is the off-diagonal part. The step is given by ``pse(t+dt) = (1 - 1j * dt * B) * exp(-1j * dt * A) * pse(t)``.
         """
         n_steps = positive_int(n_steps, "n_steps")
         if self._evo_AB is None:
+            if debug:
+                print('Computing AB evolution operator...')
+                time_start = time.time()
             self._compute_AB_evolution_operator()
+            if debug:
+                print('Computing AB evolution operator...Done')
+                print(f'Time taken: {time.time() - time_start} seconds')
         for _ in range(n_steps):
+            if debug:
+                if step_idx == 0:
+                    print('Stepping AB evolution operator...')
+                    time_start = time.time()
+                if step_idx > 0 and step_idx < 5:
+                    print(f'Step {step_idx} done')
+                    print(f'Time taken: {time.time() - time_start} seconds')
             self.state = _apply_evolution_operator(self.state, self._evo_AB)
         return self.state
 
-    def observe(self, operator: Any) -> Array:
+    def observe(self, operator: Any, debug: bool = False) -> Array:
         """Return ``<psi|O|psi>`` for each state in the ensemble."""
 
         matrix = _as_operator_matrix(operator, self.hilbert_dim, self.batch_size, self.dtype)
-        return batch_expectation_pure(self.state, matrix)
+        if debug:
+            time_start = time.time()
+        result = _batch_expectation_pure(self.state, matrix)
+        if debug:
+            print(f'Observation time taken: {time.time() - time_start} seconds')
+        return result
 
 
 
@@ -219,14 +245,14 @@ class LindbladSimulation:
         """Set the density-matrix ensemble with shape (batch_size, hilbert_dim, hilbert_dim)."""
         self._dme.set_dme(density_matrices)
 
-    def add_operator_group_to_hamiltonian(self, operator_group: _OperatorGroupLike) -> None:
+    def add_operator_group_to_hamiltonian(self, operator_group: OperatorGroup) -> None:
         """Add a static operator group to the Hamiltonian."""
 
         self.hamiltonian = self.hamiltonian + _as_operator_matrix(
             operator_group, self.hilbert_dim, self.batch_size, self.dtype
         )
 
-    def add_operator_group_to_jumping(self, operator_group: _OperatorGroupLike) -> None:
+    def add_operator_group_to_jumping(self, operator_group: OperatorGroup) -> None:
         """Add a static operator group to the Lindblad jump operators."""
 
         jump_operator = _as_operator_matrix(operator_group, self.hilbert_dim, self.batch_size, self.dtype)

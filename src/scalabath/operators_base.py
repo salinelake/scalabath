@@ -1,4 +1,4 @@
-"""Basic operator matrices for small subsystems."""
+"""Basic operator matrices, including one-mode bosonic operators, two-level-system operators, and one-particle tight-binding operators."""
 
 from __future__ import annotations
 
@@ -233,7 +233,6 @@ class tight_binding_1d:
         else:
             raise ValueError(f"unknown tight-binding operator descriptor {mark!r}")
 
-
 class tight_binding_2d:
     """Single-particle tight-binding operators on a rectangular 2D lattice."""
 
@@ -330,6 +329,8 @@ class tight_binding_2d:
         non-``"X"`` character.
         """
         raise NotImplementedError("get_operator has not been implemented for tight_binding_2d")
+
+
 
 
 __all__ = ["boson", "tight_binding_1d", "tight_binding_2d", "tls"]

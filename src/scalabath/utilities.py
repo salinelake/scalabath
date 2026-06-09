@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import Any
+import jax
 import jax.numpy as jnp
 from jax import Array
 
@@ -133,7 +134,7 @@ def batch_trace(density_matrices: Array) -> Array:
 
     return jnp.trace(density_matrices, axis1=-2, axis2=-1)
 
-
+@jax.jit
 def batch_expectation_pure(states: Array, operator: Array) -> Array:
     """Compute ``<psi|O|psi>`` for a pure-state ensemble.
 
