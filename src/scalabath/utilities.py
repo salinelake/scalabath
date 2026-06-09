@@ -8,10 +8,27 @@ already compatible with JAX transformations used by the simulation kernels.
 from __future__ import annotations
 
 from collections.abc import Sequence
-
+from typing import Any
 import jax.numpy as jnp
 from jax import Array
 
+def positive_int(value: int, name: str) -> int:
+    value = int(value)
+    if value <= 0:
+        raise ValueError(f"{name} must be positive")
+    return value
+
+def nonnegative_int(value: int, name: str) -> int:
+    value = int(value)
+    if value < 0:
+        raise ValueError(f"{name} must be non-negative")
+    return value
+
+def complex_dtype(dtype: Any) -> jnp.dtype:
+    dtype = jnp.dtype(dtype)
+    if not jnp.issubdtype(dtype, jnp.complexfloating):
+        raise ValueError("operators require a complex dtype")
+    return dtype
 
 def adjoint(operator: Array) -> Array:
     """Return the Hermitian adjoint of an operator.

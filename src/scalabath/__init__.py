@@ -11,6 +11,7 @@ from scalabath.operators_groups import (
 from scalabath.simulations import LindbladSimulation, UnitarySimulation
 from scalabath.systems import DensityMatrixEnsemble, PureStatesEnsemble
 from scalabath.utilities import ABAd, compose
+from scalabath.constants import Constants
 
 __version__ = "0.1.0"
 

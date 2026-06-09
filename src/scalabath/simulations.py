@@ -10,7 +10,7 @@ import jax.scipy as jsp
 from jax import Array
 
 from scalabath.systems import DensityMatrixEnsemble, PureStatesEnsemble
-from scalabath.utilities import batch_expectation_density, batch_expectation_pure
+from scalabath.utilities import batch_expectation_density, batch_expectation_pure, positive_int
 
 
 class _OperatorGroupLike(Protocol):
@@ -30,7 +30,6 @@ def _as_pure_state_batch(initial_state: Any, dtype: Any) -> Array:
         raise ValueError("pure states must have shape (hilbert_dim,) or (batch, hilbert_dim)")
     return jnp.asarray(state, dtype=dtype)
 
-
 def _as_density_batch(initial_density_matrix: Any, dtype: Any) -> Array:
     if isinstance(initial_density_matrix, DensityMatrixEnsemble):
         density_matrix = initial_density_matrix.get_dme()
@@ -45,39 +44,29 @@ def _as_density_batch(initial_density_matrix: Any, dtype: Any) -> Array:
         )
     return jnp.asarray(density_matrix, dtype=dtype)
 
-
-def _as_operator_matrix(operator: Any, hilbert_dim: int, dtype: Any) -> Array:
+def _as_operator_matrix(operator: Any, hilbert_dim: int, batch_size: int, dtype: Any) -> Array:
     if hasattr(operator, "sum_operators"):
         matrix = operator.sum_operators()
     else:
         matrix = operator
     matrix = jnp.asarray(matrix, dtype=dtype)
-    expected_shape = (hilbert_dim, hilbert_dim)
+    expected_shape = (batch_size, hilbert_dim, hilbert_dim)
     if matrix.shape != expected_shape:
-        raise ValueError(f"operator must have shape {expected_shape}")
+        raise ValueError(f"operator must have shape (batch_size, hilbert_dim, hilbert_dim), but got {matrix.shape}")
     return matrix
 
 
-def _zero_hamiltonian(hilbert_dim: int, dtype: Any) -> Array:
-    return jnp.zeros((hilbert_dim, hilbert_dim), dtype=dtype)
-
-
-def _unitary_evolution_operator(hamiltonian: Array, dt: Array) -> Array:
-    return jsp.linalg.expm(-1j * dt * hamiltonian)
-
-
 @jax.jit
-def _unitary_step(states: Array, evolution_operator: Array) -> Array:
-    return states @ evolution_operator.T
-
-
+def _apply_evolution_operator(states: Array, evolution_operator: Array) -> Array:
+    return jnp.matmul(evolution_operator, states[..., None])[..., 0]
+ 
 @jax.jit
-def _lindblad_step(
+def _lindblad_step_exact(
     density_matrices: Array,
     hamiltonian: Array,
     jump_operators: Array,
     dt: Array,
-) -> Array:
+    ) -> Array:
     left = jnp.einsum("ij,bjk->bik", hamiltonian, density_matrices)
     right = jnp.einsum("bij,jk->bik", density_matrices, hamiltonian)
     coherent = -1j * (left - right)
@@ -123,33 +112,66 @@ class UnitarySimulation:
         self.state = _as_pure_state_batch(initial_state, self.dtype)
         self.batch_size, self.hilbert_dim = self.state.shape
         self.dt = jnp.asarray(dt)
-        self.hamiltonian = _zero_hamiltonian(self.hilbert_dim, self.dtype)
         if hamiltonian is not None:
-            self.hamiltonian = _as_operator_matrix(hamiltonian, self.hilbert_dim, self.dtype)
-        self.evolution_operator = _unitary_evolution_operator(self.hamiltonian, self.dt)
+            self.hamiltonian = _as_operator_matrix(hamiltonian, self.hilbert_dim, self.batch_size, self.dtype)
+        else:
+            self.hamiltonian = jnp.zeros((self.batch_size, self.hilbert_dim, self.hilbert_dim), dtype=self.dtype)
+        self._evo_exact = None ## only computed when the system is small enough to allow for exact integration. shape: (batch_size, hilbert_dim, hilbert_dim)
+        self._evo_AB = None ## shape: (batch_size, hilbert_dim, hilbert_dim)
 
     def add_operator_group_to_hamiltonian(self, operator_group: _OperatorGroupLike) -> None:
         """Add a static operator group to the Hamiltonian."""
 
         self.hamiltonian = self.hamiltonian + _as_operator_matrix(
-            operator_group, self.hilbert_dim, self.dtype
+            operator_group, self.hilbert_dim, self.batch_size, self.dtype
         )
-        self.evolution_operator = _unitary_evolution_operator(self.hamiltonian, self.dt)
+    
+    def _compute_exact_evolution_operator(self) -> None:
+        """Save the exact evolution operator. This is only practical for small systems. For large systems, use approximate integration methods such as Trotter decomposition."""
 
-    def step(self, n_steps: int = 1) -> Array:
+        self._evo_exact = jsp.linalg.expm(-1j * self.dt * self.hamiltonian) ## shape: (batch_size, hilbert_dim, hilbert_dim)
+    
+    def _compute_AB_evolution_operator(self) -> None:
+        """Compute the AB evolution operator."""
+
+        ## get exp(-1j * dt * A) first
+        A = jnp.diagonal(self.hamiltonian, axis1=-2, axis2=-1)
+        evo_A = jnp.exp(-1j * self.dt * A) ## shape: (batch_size, hilbert_dim)
+        
+        ## get (1 - 1j * dt * B) next
+        mask = 1 - jnp.eye(self.hilbert_dim, dtype=self.hamiltonian.dtype).reshape(1, self.hilbert_dim, self.hilbert_dim)
+        B = self.hamiltonian * mask
+        identity = jnp.eye(self.hilbert_dim, dtype=self.hamiltonian.dtype).reshape(1, self.hilbert_dim, self.hilbert_dim)
+        evo_B = identity - 1j * self.dt * B ## shape: (batch_size, hilbert_dim, hilbert_dim)
+
+        ## compute the AB evolution operator
+        self._evo_AB = evo_B * evo_A[:,None,:]
+
+    def step_exact(self, n_steps: int = 1) -> Array:
         """Advance the pure-state ensemble by ``n_steps`` time steps."""
 
-        n_steps = int(n_steps)
-        if n_steps < 0:
-            raise ValueError("n_steps must be non-negative")
+        n_steps = positive_int(n_steps, "n_steps")
+        if self._evo_exact is None:
+            self._compute_exact_evolution_operator()
         for _ in range(n_steps):
-            self.state = _unitary_step(self.state, self.evolution_operator)
+            self.state = _apply_evolution_operator(self.state, self._evo_exact)
+        return self.state
+
+    def step_AB_scheme(self, n_steps: int = 1) -> Array:
+        """Advance the system by ``n_steps`` time steps using the AB scheme.
+        A is the diagonal part of the Hamiltonian, and B is the off-diagonal part. The step is given by ``pse(t+dt) = (1 - 1j * dt * B) * exp(-1j * dt * A) * pse(t)``.
+        """
+        n_steps = positive_int(n_steps, "n_steps")
+        if self._evo_AB is None:
+            self._compute_AB_evolution_operator()
+        for _ in range(n_steps):
+            self.state = _apply_evolution_operator(self.state, self._evo_AB)
         return self.state
 
     def observe(self, operator: Any) -> Array:
         """Return ``<psi|O|psi>`` for each state in the ensemble."""
 
-        matrix = _as_operator_matrix(operator, self.hilbert_dim, self.dtype)
+        matrix = _as_operator_matrix(operator, self.hilbert_dim, self.batch_size, self.dtype)
         return batch_expectation_pure(self.state, matrix)
 
     def get_state(self) -> Array:
@@ -181,10 +203,10 @@ class LindbladSimulation:
         self.batch_size = self.density_matrices.shape[0]
         self.hilbert_dim = self.density_matrices.shape[1]
         self.dt = jnp.asarray(dt)
-        self.hamiltonian = _zero_hamiltonian(self.hilbert_dim, self.dtype)
         if hamiltonian is not None:
-            self.hamiltonian = _as_operator_matrix(hamiltonian, self.hilbert_dim, self.dtype)
-
+            self.hamiltonian = _as_operator_matrix(hamiltonian, self.hilbert_dim, self.batch_size, self.dtype)
+        else:
+            self.hamiltonian = jnp.zeros((self.batch_size, self.hilbert_dim, self.hilbert_dim), dtype=self.dtype)
         self.jump_operators = jnp.zeros((0, self.hilbert_dim, self.hilbert_dim), dtype=self.dtype)
         if jump_operators is not None:
             for jump_operator in jump_operators:
@@ -194,13 +216,13 @@ class LindbladSimulation:
         """Add a static operator group to the Hamiltonian."""
 
         self.hamiltonian = self.hamiltonian + _as_operator_matrix(
-            operator_group, self.hilbert_dim, self.dtype
+            operator_group, self.hilbert_dim, self.batch_size, self.dtype
         )
 
     def add_operator_group_to_jumping(self, operator_group: _OperatorGroupLike) -> None:
         """Add a static operator group to the Lindblad jump operators."""
 
-        jump_operator = _as_operator_matrix(operator_group, self.hilbert_dim, self.dtype)
+        jump_operator = _as_operator_matrix(operator_group, self.hilbert_dim, self.batch_size, self.dtype)
         self.jump_operators = jnp.concatenate(
             [self.jump_operators, jump_operator[None, :, :]], axis=0
         )
@@ -223,7 +245,7 @@ class LindbladSimulation:
     def observe(self, operator: Any) -> Array:
         """Return ``Tr(rho O)`` for each density matrix in the ensemble."""
 
-        matrix = _as_operator_matrix(operator, self.hilbert_dim, self.dtype)
+        matrix = _as_operator_matrix(operator, self.hilbert_dim, self.batch_size, self.dtype)
         return batch_expectation_density(self.density_matrices, matrix)
 
     def get_state(self) -> Array:

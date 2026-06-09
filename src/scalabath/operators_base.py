@@ -9,29 +9,7 @@ from warnings import warn
 import jax.numpy as jnp
 from jax import Array
 
-from scalabath.utilities import adjoint, compose
-
-
-def _complex_dtype(dtype: Any) -> jnp.dtype:
-    dtype = jnp.dtype(dtype)
-    if not jnp.issubdtype(dtype, jnp.complexfloating):
-        raise ValueError("operators require a complex dtype")
-    return dtype
-
-
-def _positive_int(value: int, name: str) -> int:
-    value = int(value)
-    if value <= 0:
-        raise ValueError(f"{name} must be positive")
-    return value
-
-
-def _nonnegative_int(value: int, name: str) -> int:
-    value = int(value)
-    if value < 0:
-        raise ValueError(f"{name} must be non-negative")
-    return value
-
+from scalabath.utilities import adjoint, compose, positive_int, nonnegative_int, complex_dtype
 
 class boson:
     """Single-mode bosonic operators with a finite occupation cutoff.
@@ -43,9 +21,9 @@ class boson:
     """
 
     def __init__(self, nmax: int, *, dtype: Any = jnp.complex128) -> None:
-        self.nmax = _nonnegative_int(nmax, "nmax")
+        self.nmax = nonnegative_int(nmax, "nmax")
         self.dim = self.nmax + 1
-        self.dtype = _complex_dtype(dtype)
+        self.dtype = complex_dtype(dtype)
 
         levels = jnp.arange(self.dim)
         weights = jnp.sqrt(jnp.arange(1, self.dim, dtype=jnp.float64)).astype(self.dtype)
@@ -58,19 +36,7 @@ class boson:
         self.creation = adjoint(self.annihilation)
         self.number = jnp.diag(levels).astype(self.dtype)
 
-        self.I = self.identity
-        self.D = self.annihilation
-        self.U = self.creation
-        self.N = self.number
-
-    def get_operator(self, name: str) -> Array:
-        """Return a named single-mode operator.
-
-        Accepted names are ``"I"``, ``"D"``/``"-"`` for annihilation,
-        ``"U"``/``"+"`` for creation, and ``"N"`` for number.
-        """
-
-        operators = {
+        self.descriptors_dict = {
             "+": self.creation,
             "-": self.annihilation,
             "D": self.annihilation,
@@ -78,20 +44,28 @@ class boson:
             "N": self.number,
             "U": self.creation,
         }
-        try:
-            return operators[name]
-        except KeyError as exc:
-            raise ValueError(f"unknown boson operator name {name!r}") from exc
 
-    def get_sequence_ops(self, name_sequence: str) -> list[Array]:
+    def get_operator(self, descriptor: str) -> Array:
+        """Return a named single-mode operator.
+
+        Accepted descriptors are ``"I"``, ``"D"``/``"-"`` for annihilation,
+        ``"U"``/``"+"`` for creation, and ``"N"`` for number.
+        """
+
+        try:
+            return self.descriptors_dict[descriptor]
+        except KeyError as exc:
+            raise ValueError(f"unknown boson operator descriptor {descriptor!r}") from exc
+
+    def get_sequence_ops(self, descriptor_sequence: str) -> list[Array]:
         """Return local operators for a sequence such as ``"UDI"``."""
 
-        return [self.get_operator(name) for name in name_sequence]
+        return [self.get_operator(descriptor) for descriptor in descriptor_sequence]
 
-    def get_composite_ops(self, name_sequence: str) -> Array:
-        """Return the Kronecker product for a multi-mode operator sequence."""
+    def get_composite_ops(self, descriptor_sequence: str) -> Array:
+        """The same as the Kronecker product for a multi-mode, same-level operator sequence. """
 
-        return compose(self.get_sequence_ops(name_sequence))
+        return compose(self.get_sequence_ops(descriptor_sequence))
 
 
 class tls:
@@ -102,7 +76,7 @@ class tls:
     """
 
     def __init__(self, *, dtype: Any = jnp.complex128) -> None:
-        self.dtype = _complex_dtype(dtype)
+        self.dtype = complex_dtype(dtype)
 
         self.sigma_x = jnp.asarray([[0, 1], [1, 0]], dtype=self.dtype)
         self.sigma_y = jnp.asarray([[0, -1j], [1j, 0]], dtype=self.dtype)
@@ -112,49 +86,39 @@ class tls:
         self.sigma_minus = jnp.asarray([[0, 0], [1, 0]], dtype=self.dtype)
         self.number = self.sigma_plus @ self.sigma_minus
 
-        self.X = self.sigma_x
-        self.Y = self.sigma_y
-        self.Z = self.sigma_z
-        self.I = self.identity
-        self.U = self.sigma_plus
-        self.D = self.sigma_minus
-        self.N = self.number
-
-    def get_operator(self, name: str) -> Array:
-        """Return a named two-level-system operator.
-
-        Accepted names are ``"X"``, ``"Y"``, ``"Z"``, ``"I"``,
-        ``"U"``/``"+"``/``"P"`` for raising, ``"D"``/``"-"``/``"M"``
-        for lowering, and ``"N"`` for ``sigma_plus @ sigma_minus``.
-        """
-
-        operators = {
-            "+": self.sigma_plus,
-            "-": self.sigma_minus,
-            "D": self.sigma_minus,
-            "I": self.identity,
-            "M": self.sigma_minus,
-            "N": self.number,
-            "P": self.sigma_plus,
-            "U": self.sigma_plus,
+        self.descriptors_dict = {
             "X": self.sigma_x,
             "Y": self.sigma_y,
             "Z": self.sigma_z,
+            "I": self.identity,
+            "N": self.number,
+            "U": self.sigma_plus,
+            "D": self.sigma_minus,
+            "+": self.sigma_plus,
+            "-": self.sigma_minus,
         }
-        try:
-            return operators[name]
-        except KeyError as exc:
-            raise ValueError(f"unknown two-level operator name {name!r}") from exc
 
-    def get_sequence_ops(self, name_sequence: str) -> list[Array]:
+    def get_operator(self, descriptor: str) -> Array:
+        """Return a named two-level-system operator.
+
+        Accepted descriptors are ``"X"``, ``"Y"``, ``"Z"``, ``"I"``,
+        ``"U"``/``"+"``/``"P"`` for raising, ``"D"``/``"-"``/``"M"``
+        for lowering, and ``"N"`` for ``sigma_plus @ sigma_minus``.
+        """
+        try:
+            return self.descriptors_dict[descriptor]
+        except KeyError as exc:
+            raise ValueError(f"unknown two-level operator descriptor {descriptor!r}") from exc
+
+    def get_sequence_ops(self, descriptor_sequence: str) -> list[Array]:
         """Return local operators for a sequence such as ``"XIY"``."""
 
-        return [self.get_operator(name) for name in name_sequence]
+        return [self.get_operator(descriptor) for descriptor in descriptor_sequence]
 
-    def get_composite_ops(self, name_sequence: str) -> Array:
+    def get_composite_ops(self, descriptor_sequence: str) -> Array:
         """Return the Kronecker product for a multi-spin operator sequence."""
 
-        return compose(self.get_sequence_ops(name_sequence))
+        return compose(self.get_sequence_ops(descriptor_sequence))
 
 
 class tight_binding_1d:
@@ -173,15 +137,22 @@ class tight_binding_1d:
         periodic: bool = True,
         dtype: Any = jnp.complex128,
     ) -> None:
-        self.n_sites = _positive_int(n_sites, "n_sites")
+        self.n_sites = positive_int(n_sites, "n_sites")
         if self.n_sites == 1:
             raise ValueError("n_sites can not be 1")
         if self.n_sites == 2:
             raise ValueError("n_sites has to be greater than 2. Use tls instead of you only need a two-level-system.")
         self.periodic = bool(periodic)
-        self.dtype = _complex_dtype(dtype)
+        self.dtype = complex_dtype(dtype)
         self.hilbert_dim = self.n_sites
         self.identity = jnp.eye(self.hilbert_dim, dtype=self.dtype)
+        self.descriptors_dict = {
+            "X": None,  
+            "N": None,
+            "L": None,
+            "R": None,
+        }
+
 
     def _validate_site(self, site: int) -> int:
         site = int(site)
@@ -249,33 +220,39 @@ class tight_binding_1d:
             total = total + self.hopping(neighbor, site, jnp.conjugate(amplitude))
         return total
 
-    # def get_composite_ops(self, name_sequence: str) -> Array:
-    #     """Return a sequence-defined one-particle tight-binding operator.
+    def get_composite_ops(self, descriptor_sequence: str) -> Array:
+        """Return a sequence-defined one-particle tight-binding operator. Note that this function does not construct a many-body operator. 
 
-    #     ``"X"`` denotes identity on a site, ``"N"`` an on-site projector,
-    #     ``"L"`` a hop from the marked site to the left, and ``"R"`` a hop from
-    #     the marked site to the right. The sequence must contain zero or one
-    #     non-``"X"`` character.
-    #     """
+        ``"X"`` denotes identity on a site, ``"N"`` an on-site projector,
+        ``"L"`` a hop from the marked site to the left, and ``"R"`` a hop from
+        the marked site to the right. The sequence must contain zero or one
+        non-``"X"`` character.
+        Example:
+            >>> tb = tight_binding_1d(3)
+            >>> tb.get_composite_ops("XRX")
+            Array([[0.+0.j, 1.+0.j, 0.+0.j],
+                   [0.+0.j, 0.+0.j, 0.+0.j],
+                   [0.+0.j, 0.+0.j, 0.+0.j]], dtype=complex128)
+        """
 
-    #     if len(name_sequence) != self.n_sites:
-    #         raise ValueError("name_sequence length must equal n_sites")
-    #     if not all(name in {"L", "N", "R", "X"} for name in name_sequence):
-    #         raise ValueError("only L, N, R, and X are allowed in name_sequence")
+        if len(descriptor_sequence) != self.n_sites:
+            raise ValueError("descriptor_sequence length must equal n_sites")
+        if not all(descriptor in self.descriptors_dict for descriptor in descriptor_sequence):
+            raise ValueError("only L, N, R, and X are allowed in descriptor_sequence")
 
-    #     marked_sites = [idx for idx, name in enumerate(name_sequence) if name != "X"]
-    #     if not marked_sites:
-    #         return self.identity
-    #     if len(marked_sites) > 1:
-    #         raise ValueError("name_sequence may contain at most one non-X operator")
+        marked_sites = [idx for idx, descriptor in enumerate(descriptor_sequence) if descriptor != "X"]
+        if not marked_sites:
+            return self.identity
+        if len(marked_sites) > 1:
+            raise ValueError("descriptor_sequence may contain at most one non-X operator")
 
-    #     site = marked_sites[0]
-    #     name = name_sequence[site]
-    #     if name == "L":
-    #         return self.left(site)
-    #     if name == "R":
-    #         return self.right(site)
-    #     return self.on_site(site)
+        site = marked_sites[0]
+        descriptor = descriptor_sequence[site]
+        if descriptor == "L":
+            return self.left(site)
+        if descriptor == "R":
+            return self.right(site)
+        return self.on_site(site)
 
 
 class tight_binding_2d:
@@ -289,14 +266,14 @@ class tight_binding_2d:
         periodic: bool = True,
         dtype: Any = jnp.complex128,
     ) -> None:
-        self.nx = _positive_int(nx, "nx")
-        self.ny = _positive_int(ny, "ny")
+        self.nx = positive_int(nx, "nx")
+        self.ny = positive_int(ny, "ny")
         if self.nx == 1 or self.ny == 1:
             raise ValueError("nx and ny have to be greater than 1. Use tight_binding_1d instead if you only need a 1D lattice.")
         if self.nx == 2 or self.ny == 2:
             warn("nx or ny are 2. Do not use `nearest_neighbor_hopping` to construct the Hamiltonian because it will double count the hopping. Use `hopping` to construct the Hamiltonian one term by one term instead.")
         self.periodic = bool(periodic)
-        self.dtype = _complex_dtype(dtype)
+        self.dtype = complex_dtype(dtype)
         self.hilbert_dim = self.nx * self.ny
         self.identity = jnp.eye(self.hilbert_dim, dtype=self.dtype)
 
@@ -364,6 +341,16 @@ class tight_binding_2d:
                     total = total + self.hopping((x, y), (nx, ny), amplitude)
                     total = total + self.hopping((nx, ny), (x, y), jnp.conjugate(amplitude))
         return total
+
+    def get_composite_ops(self, descriptor_sequence: str) -> Array:
+        """Return a sequence-defined one-particle tight-binding operator. Note that this function does not construct a many-body operator. 
+
+        ``"X"`` denotes identity on a site, ``"N"`` an on-site projector,
+        ``"L"`` a hop from the marked site to the left, and ``"R"`` a hop from
+        the marked site to the right. The sequence must contain zero or one
+        non-``"X"`` character.
+        """
+        raise NotImplementedError("get_composite_ops has not been implemented for tight_binding_2d")
 
 
 __all__ = ["boson", "tight_binding_1d", "tight_binding_2d", "tls"]

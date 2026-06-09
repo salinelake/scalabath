@@ -7,21 +7,7 @@ from typing import Any
 import jax.numpy as jnp
 from jax import Array
 
-from scalabath.utilities import batch_trace
-
-
-def _validate_positive_int(value: int, name: str) -> int:
-    value = int(value)
-    if value <= 0:
-        raise ValueError(f"{name} must be positive")
-    return value
-
-
-def _validate_complex_dtype(dtype: Any) -> jnp.dtype:
-    dtype = jnp.dtype(dtype)
-    if not jnp.issubdtype(dtype, jnp.complexfloating):
-        raise ValueError("state containers require a complex dtype")
-    return dtype
+from scalabath.utilities import batch_trace, positive_int, complex_dtype
 
 
 class PureStatesEnsemble:
@@ -44,10 +30,10 @@ class PureStatesEnsemble:
         *,
         dtype: Any = jnp.complex128,
     ) -> None:
-        self.hilbert_dim = _validate_positive_int(hilbert_dim, "hilbert_dim")
-        self.batch_size = _validate_positive_int(batch_size, "batch_size")
-        self.dtype = _validate_complex_dtype(dtype)
-        self._pse: Array | None = None
+        self.hilbert_dim = positive_int(hilbert_dim, "hilbert_dim")
+        self.batch_size = positive_int(batch_size, "batch_size")
+        self.dtype = complex_dtype(dtype)
+        self._pse: Array | None = None  ## shape: (batch_size, hilbert_dim)
 
     @property
     def ns(self) -> int:
@@ -133,10 +119,10 @@ class DensityMatrixEnsemble:
         *,
         dtype: Any = jnp.complex128,
     ) -> None:
-        self.hilbert_dim = _validate_positive_int(hilbert_dim, "hilbert_dim")
-        self.batch_size = _validate_positive_int(batch_size, "batch_size")
-        self.dtype = _validate_complex_dtype(dtype)
-        self._dme: Array | None = None
+        self.hilbert_dim = positive_int(hilbert_dim, "hilbert_dim")
+        self.batch_size = positive_int(batch_size, "batch_size")
+        self.dtype = complex_dtype(dtype)
+        self._dme: Array | None = None  ## shape: (batch_size, hilbert_dim, hilbert_dim)
 
     @property
     def ns(self) -> int:
