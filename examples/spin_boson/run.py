@@ -16,7 +16,7 @@ parser.add_argument('--temperature', type=float, default=300, help='temperature 
 parser.add_argument('--dt', type=float, default=0.01, help='time step in fs')
 parser.add_argument('--epsilon', type=float, default=0.1, help='epsilon')
 parser.add_argument('--sample_time', type=float, default=100, help='sampling time in fs')
-parser.add_argument('--batchsize', type=int, default=4, help='batch size')
+parser.add_argument('--batchsize', type=int, default=1, help='batch size')
 parser.add_argument('--run_id', type=int, default=0, help='run id')
 args = parser.parse_args()
 epsilon = args.epsilon
@@ -142,7 +142,7 @@ sigma_x_list = []
 niters = int(nsteps/sample_freq)
 print('number of iterations:', niters, f'each iteration runs {sample_freq} steps')
 for i in range(niters):
-    simulation.step_exact(n_steps=sample_freq)
+    simulation.step_AB_scheme(n_steps=sample_freq)
     sigma_n = simulation.observe(obs_1)
     sigma_x = simulation.observe(obs_2)
     print('t={:.3f}fs, sigma_n={}, sigma_x={}'.format(i*sample_freq*dt/Constants.fs, sigma_n, sigma_x))

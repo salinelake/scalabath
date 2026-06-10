@@ -1,48 +1,111 @@
-"""Tests for minimal simulation classes."""
+"""Tests for dense and tensorized simulation classes."""
 
 from __future__ import annotations
 
 import jax.numpy as jnp
+import jax.scipy as jsp
 import numpy as np
 import pytest
 
 from scalabath.operators_base import tls
-from scalabath.operators_groups import OperatorGroup, SpinOperatorGroup
-from scalabath.simulations import LindbladSimulation, UnitarySimulation
+from scalabath.simulations import (
+    CoupledLindbladTrajectorySimulation,
+    LindbladSimulation,
+    SystemBathUnitarySimulation,
+    UnitarySimulation,
+)
+from scalabath.utilities import compose
 
 pytestmark = pytest.mark.unit
 
 
-def test_unitary_simulation_steps_and_observes() -> None:
-    field = SpinOperatorGroup(1, "field")
-    field.add_operator("X")
-    simulation = UnitarySimulation(jnp.asarray([1, 0], dtype=jnp.complex128), dt=jnp.pi / 2)
-    simulation.add_operator_group_to_hamiltonian(field)
+def test_unitary_simulation_steps_and_observes_dense_state() -> None:
+    local = tls(dtype=jnp.complex128)
+    simulation = UnitarySimulation(
+        2,
+        dt=jnp.pi / 2,
+        hamiltonian=local.sigma_x,
+        dtype=jnp.complex128,
+    )
+    simulation.state = jnp.asarray([1, 0], dtype=jnp.complex128)
 
     state = simulation.step()
-    projector_one = OperatorGroup("projector-one", 2)
-    projector_one.add_operator(jnp.asarray([[0, 0], [0, 1]], dtype=jnp.complex128))
+    projector_one = jnp.asarray([[0, 0], [0, 1]], dtype=jnp.complex128)
 
     np.testing.assert_allclose(np.asarray(jnp.abs(state[0]) ** 2), np.asarray([0, 1]), atol=1e-12)
-    np.testing.assert_allclose(np.asarray(simulation.observe(projector_one)), np.asarray([1]))
+    np.testing.assert_allclose(
+        np.asarray(simulation.observe(projector_one)),
+        np.asarray([1]),
+        atol=1e-12,
+    )
 
 
 def test_lindblad_simulation_preserves_trace_for_one_step() -> None:
-    local = tls()
+    local = tls(dtype=jnp.complex128)
     rho0 = jnp.asarray([[0, 0], [0, 1]], dtype=jnp.complex128)
-    jump = OperatorGroup("jump", 2)
-    jump.add_operator(local.sigma_minus)
-    simulation = LindbladSimulation(rho0, dt=0.01, jump_operators=[jump])
+    simulation = LindbladSimulation(
+        2,
+        dt=0.01,
+        jump_operators=[local.sigma_minus],
+        dtype=jnp.complex128,
+    )
+    simulation.density_matrices = rho0
 
     rho = simulation.step()
 
-    np.testing.assert_allclose(np.asarray(jnp.trace(rho[0])), np.asarray(1.0 + 0.0j))
+    np.testing.assert_allclose(np.asarray(jnp.trace(rho[0])), np.asarray(1.0 + 0.0j), atol=1e-12)
 
 
 def test_lindblad_simulation_observes_density_matrix_expectation() -> None:
     rho0 = jnp.asarray([[1, 0], [0, 0]], dtype=jnp.complex128)
-    observable = OperatorGroup("projector-zero", 2)
-    observable.add_operator(jnp.asarray([[1, 0], [0, 0]], dtype=jnp.complex128))
-    simulation = LindbladSimulation(rho0, dt=0.1)
+    observable = jnp.asarray([[1, 0], [0, 0]], dtype=jnp.complex128)
+    simulation = LindbladSimulation(2, dt=0.1, dtype=jnp.complex128)
+    simulation.density_matrices = rho0
 
     np.testing.assert_allclose(np.asarray(simulation.observe(observable)), np.asarray([1]))
+
+
+def test_system_bath_unitary_trotter_matches_dense_local_factorization() -> None:
+    sigma_x = jnp.asarray([[0, 1], [1, 0]], dtype=jnp.complex128)
+    number = jnp.diag(jnp.asarray([0, 1], dtype=jnp.complex128))
+    identity_s = jnp.eye(2, dtype=jnp.complex128)
+    identity_b = jnp.eye(2, dtype=jnp.complex128)
+    dt = 0.07
+    initial = jnp.zeros((1, 2, 2), dtype=jnp.complex128).at[0, 0, 1].set(1)
+
+    simulation = SystemBathUnitarySimulation(
+        2,
+        (2,),
+        dt,
+        system_hamiltonian=sigma_x,
+        bath_hamiltonians=[number],
+        system_bath_hamiltonians=[compose([sigma_x, number])],
+        dtype=jnp.complex128,
+    )
+    simulation.state = initial
+
+    tensor_state = simulation.step()
+
+    u_s = jsp.linalg.expm(-0.5j * dt * compose([sigma_x, identity_b]))
+    u_b = jsp.linalg.expm(-0.5j * dt * compose([identity_s, number]))
+    u_sb = jsp.linalg.expm(-1j * dt * compose([sigma_x, number]))
+    dense_step = u_b @ u_s @ u_sb @ u_b @ u_s
+    expected = (dense_step @ initial[0].reshape(-1)).reshape(2, 2)
+
+    np.testing.assert_allclose(np.asarray(tensor_state[0]), np.asarray(expected), atol=1e-12)
+
+
+def test_coupled_lindblad_trajectory_accepts_local_bath_hamiltonians() -> None:
+    initial = jnp.zeros((1, 2, 2), dtype=jnp.complex128).at[0, 0, 1].set(1)
+    simulation = CoupledLindbladTrajectorySimulation(
+        2,
+        (2,),
+        0.01,
+        bath_hamiltonians=[jnp.diag(jnp.asarray([0, -0.1j], dtype=jnp.complex128))],
+        dtype=jnp.complex128,
+    )
+    simulation.state = initial
+
+    state = simulation.step()
+
+    assert state.shape == (1, 2, 2)
