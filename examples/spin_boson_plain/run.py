@@ -116,8 +116,13 @@ pse_init = []
 debug = True
 for idx in range(batchsize):
     if debug:
-        system_init = np.load('system_init_test.npy')
-        chosen_levels = np.load('chosen_levels_test.npy')
+        if os.path.exists('system_init_test.npy'):
+            system_init = np.load('system_init_test.npy')
+            chosen_levels = np.load('chosen_levels_test.npy')
+        else:
+            system_init, chosen_levels = sample_init_state(epsilon=epsilon, num_modes=num_modes, nmax=nmax, omega=omega, kbT=kbT)
+            np.save('system_init_test.npy', system_init)
+            np.save('chosen_levels_test.npy', chosen_levels)
     else:
         system_init, chosen_levels = sample_init_state(epsilon=epsilon, num_modes=num_modes, nmax=nmax, omega=omega, kbT=kbT)
     pse_init.append(jnp.array(system_init))
@@ -147,7 +152,8 @@ sigma_x_list = []
 niters = int(nsteps/sample_freq)
 print('number of iterations:', niters, f'each iteration runs {sample_freq} steps')
 for i in range(niters):
-    simulation.step_AB_scheme(n_steps=sample_freq)
+    simulation.step(n_steps=sample_freq)
+    # simulation.step_AB_scheme(n_steps=sample_freq)
     sigma_n = simulation.observe(obs_1).real
     sigma_x = simulation.observe(obs_2).real
     print('t={:.3f}fs, sigma_n={}, sigma_x={}'.format(i*sample_freq*dt/Constants.fs, sigma_n, sigma_x))

@@ -11,7 +11,7 @@ from scalabath.operators_groups import (
     BosonOperatorGroup,
     ComposedOperatorGroups,
     SpinOperatorGroup,
-    TightBindingOperatorGroup,
+    TightBindingChainOperatorGroup,
 )
 
 pytestmark = pytest.mark.unit

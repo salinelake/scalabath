@@ -98,7 +98,8 @@ The code is organized into the following modules:
 
 ## Local development commands
 
-Use these commands on a Linux machine with only CPU support:
+The conda environment for this project is `scalabath`.
+If this environment is not installed, use these commands on a Linux machine with only CPU support:
 
 ```bash
 conda create -n scalabath python=3.11 -y
