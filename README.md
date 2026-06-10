@@ -19,6 +19,8 @@ $$
 \hat{H}_{B}=\sum_{k=1}^{N}\omega_{k}\hat{b}_{k}^{\dagger}\hat{b}_{k},
 $$
 
+and
+
 $$
 \hat{H}_{SB}=\sum_{j=1}^{n}\sum_{k=1}^{N}|j\rangle\langle j|\otimes(g_{k}e^{i\phi_{jk}}\hat{b}_{k}+g_{k}^{*}e^{-i\phi_{jk}^{*}}\hat{b}_{k}^{\dagger}).
 $$
@@ -31,7 +33,7 @@ $$
 
 where $c_{k}(t)$ corresponds to the k-th mode of the bath. Of course this $C_{jj^{\prime}}(t)$ is not diagonal.
 
-To make it diagonal, we make $\phi_{jk}$ random numbers uniformly distributed in [0,2π). Then we have:
+To make it diagonal, we make $\phi_{jk}$ random numbers uniformly distributed in $[0,2π)$. Then we have:
 
 $$
 \mathbb{E}(C_{jj^{\prime}}(t))=\sum_{k}g_{k}g_{k}^{*}\mathbb{E}(e^{i(\phi_{jk}-\phi_{j^{\prime}k})})(c_{k}(t))=\sum_{k}g_{k}g_{k}^{*}c_{k}(t)\delta_{jj^{\prime}}.
@@ -52,11 +54,13 @@ $$
 \hat{H}_{B}=\sum_{k,k^{\prime}}h_{kk^{\prime}}\hat{b}_{k}^{\dagger}\hat{b}_{k^{\prime}};
 $$
 
+and 
+
 $$
 \hat{H}_{SB}=\sum_{j=1}^{n}\sum_{k=1}^{N}|j\rangle\langle j|\otimes(g_{k}e^{i\phi_{j}}\hat{b}_{k}+g_{k}^{*}e^{-i\phi_{j}^{*}}\hat{b}_{k}^{\dagger}).
 $$
 
-where again, $\phi_{j}$ and $\phi_{j^{\prime}}$ are random numbers uniformly distributed in [0, 2π). Then we have:
+where again, $\phi_{j}$ and $\phi_{j^{\prime}}$ are random numbers uniformly distributed in $[0, 2π)$. Then we have:
 
 $$
 C_{jj^{\prime}}(t)=g^{\dagger}e^{(-ih-\Gamma)t}ge^{i(\phi_{j}-\phi_{j^{\prime}})}
@@ -70,4 +74,7 @@ $$
 
 ## Example: Carrier transport in Rubrene crystall
 
+We simulate a 1D Holstein model of Rubrene crystal.  
+
 ## Example: Exciton transport in bio-complex
+We simulate a model for BCHL. 
