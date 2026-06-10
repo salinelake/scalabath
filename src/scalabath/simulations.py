@@ -72,7 +72,7 @@ def _matrix_exponential(matrix: Array, coefficient: Array) -> Array:
 
 @jax.jit
 def _apply_dense_evolution_operator(states: Array, evolution_operator: Array) -> Array:
-    return jnp.einsum("bij,bj->bi", evolution_operator, states)
+    return (evolution_operator @ states[:,:, None])[:,:, 0]
 
 
 @jax.jit
@@ -102,7 +102,8 @@ def _dense_lindblad_step(
 def _batch_expectation_pure_dense(states: Array, operator: Array) -> Array:
     """Compute ``<psi|O|psi>`` for batched dense operators."""
 
-    return jnp.einsum("bi,bij,bj->b", jnp.conjugate(states), operator, states)
+    operated = operator @ states[..., None]
+    return (jnp.conjugate(states)[:, None, :] @ operated)[:, 0, 0]
 
 
 def _apply_axis_operator(state: Array, operator: Array, axis: int) -> Array:
@@ -110,9 +111,9 @@ def _apply_axis_operator(state: Array, operator: Array, axis: int) -> Array:
     batch_size, dim = moved.shape[0], moved.shape[1]
     mat = moved.reshape(batch_size, dim, -1)
     if operator.ndim == 2:
-        out = jnp.einsum("ij,bjr->bir", operator, mat)
+        out = operator @ mat
     else:
-        out = jnp.einsum("bij,bjr->bir", operator, mat)
+        out = operator @ mat
     return jnp.moveaxis(out.reshape(moved.shape), 1, axis)
 
 
@@ -139,9 +140,9 @@ def _apply_system_mode_operator(state: Array, operator: Array, mode_index: int) 
     batch_size, system_dim, mode_dim = moved.shape[:3]
     mat = moved.reshape(batch_size, system_dim * mode_dim, -1)
     if operator.ndim == 2:
-        out = jnp.einsum("ij,bjr->bir", operator, mat)
+        out = operator @ mat
     else:
-        out = jnp.einsum("bij,bjr->bir", operator, mat)
+        out = operator @ mat
     return jnp.moveaxis(out.reshape(moved.shape), 2, mode_axis)
 
 
@@ -230,8 +231,6 @@ class UnitarySimulation:
     @state.setter
     def state(self, state: Any) -> None:
         self._pse.set_pse(state)
-        self._evo_exact = None
-        self._evo_ab = None
 
     def add_operator_group_to_hamiltonian(self, operator_group: OperatorGroup | Array) -> None:
         """Add a static dense operator to the Hamiltonian."""
@@ -371,7 +370,7 @@ class LindbladSimulation:
         """Return ``Tr(rho O)`` for each density matrix."""
 
         matrix = _as_operator_matrix(operator, self.hilbert_dim, self.batch_size, self.dtype)
-        return jnp.einsum("bij,bji->b", self.density_matrices, matrix)
+        return jnp.trace(self.density_matrices @ matrix, axis1=-2, axis2=-1)
 
 
 class SystemBathUnitarySimulation:
@@ -532,9 +531,7 @@ class SystemBathUnitarySimulation:
             "operator",
         )
         rho_s = self.reduced_system_density_matrix()
-        if matrix.ndim == 2:
-            return jnp.einsum("bij,ji->b", rho_s, matrix)
-        return jnp.einsum("bij,bji->b", rho_s, matrix)
+        return jnp.trace(rho_s @ matrix, axis1=-2, axis2=-1)
 
 
 class CoupledLindbladTrajectorySimulation:

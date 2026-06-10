@@ -9,9 +9,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import Any
+
 import jax
 import jax.numpy as jnp
 from jax import Array
+
 
 def positive_int(value: int, name: str) -> int:
     value = int(value)
@@ -19,17 +21,20 @@ def positive_int(value: int, name: str) -> int:
         raise ValueError(f"{name} must be positive")
     return value
 
+
 def nonnegative_int(value: int, name: str) -> int:
     value = int(value)
     if value < 0:
         raise ValueError(f"{name} must be non-negative")
     return value
 
+
 def complex_dtype(dtype: Any) -> jnp.dtype:
     dtype = jnp.dtype(dtype)
     if not jnp.issubdtype(dtype, jnp.complexfloating):
         raise ValueError("operators require a complex dtype")
     return dtype
+
 
 def adjoint(operator: Array) -> Array:
     """Return the Hermitian adjoint of an operator.
@@ -88,6 +93,7 @@ def compose_rank_2(operators: Sequence[Array]) -> Array:
         result = jnp.kron(result, operator)
     return result
 
+
 def compose(operators: Sequence[Array]) -> Array:
     """Compose operators with a Kronecker product.
 
@@ -105,7 +111,7 @@ def compose(operators: Sequence[Array]) -> Array:
     ops = tuple(jnp.asarray(operator) for operator in operators)
     if not ops:
         raise ValueError("compose requires at least one operator")
-    
+
     for operator in ops:
         if operator.ndim != ops[0].ndim:
             raise ValueError("compose only accepts operators with the same rank")
@@ -134,6 +140,7 @@ def batch_trace(density_matrices: Array) -> Array:
 
     return jnp.trace(density_matrices, axis1=-2, axis2=-1)
 
+
 @jax.jit
 def batch_expectation_pure(states: Array, operator: Array) -> Array:
     """Compute ``<psi|O|psi>`` for a pure-state ensemble.
@@ -146,7 +153,8 @@ def batch_expectation_pure(states: Array, operator: Array) -> Array:
         Expectation values shaped ``(batch,)``.
     """
 
-    return jnp.einsum("bi,ij,bj->b", jnp.conjugate(states), operator, states)
+    operated = operator @ states[..., None]
+    return (jnp.conjugate(states)[:, None, :] @ operated)[:, 0, 0]
 
 
 def batch_expectation_density(density_matrices: Array, operator: Array) -> Array:
@@ -161,7 +169,7 @@ def batch_expectation_density(density_matrices: Array, operator: Array) -> Array
         Expectation values shaped ``(batch,)``.
     """
 
-    return jnp.einsum("bij,ji->b", density_matrices, operator)
+    return jnp.trace(density_matrices @ operator, axis1=-2, axis2=-1)
 
 
 __all__ = [

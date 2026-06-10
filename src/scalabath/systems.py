@@ -342,7 +342,7 @@ class TensorProductPureStatesEnsemble:
             kept_dim,
             traced_dim,
         )
-        return jnp.einsum("bia,bja->bij", states, jnp.conjugate(states))
+        return states @ jnp.swapaxes(jnp.conjugate(states), -1, -2)
 
 
 class TensorProductDensityMatrixEnsemble:
@@ -480,7 +480,8 @@ class TensorProductDensityMatrixEnsemble:
             kept_dim,
             traced_dim,
         )
-        return jnp.einsum("bikjk->bij", density_matrices)
+        density_matrices = jnp.transpose(density_matrices, (0, 1, 3, 2, 4))
+        return jnp.trace(density_matrices, axis1=-2, axis2=-1)
 
 
 __all__ = [

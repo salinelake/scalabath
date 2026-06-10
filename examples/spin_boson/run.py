@@ -113,8 +113,13 @@ def sample_init_state(epsilon=0.1, num_modes=9, nmax=None, omega=None, kbT=None)
     return system_init, chosen_levels
 
 pse_init = []
+debug = True
 for idx in range(batchsize):
-    system_init, chosen_levels = sample_init_state(epsilon=epsilon, num_modes=num_modes, nmax=nmax, omega=omega, kbT=kbT)
+    if debug:
+        system_init = np.load('system_init_test.npy')
+        chosen_levels = np.load('chosen_levels_test.npy')
+    else:
+        system_init, chosen_levels = sample_init_state(epsilon=epsilon, num_modes=num_modes, nmax=nmax, omega=omega, kbT=kbT)
     pse_init.append(jnp.array(system_init))
     print('batch {} chosen levels:'.format(idx), chosen_levels)
 pse_init = jnp.stack(pse_init, axis=0)
@@ -143,8 +148,8 @@ niters = int(nsteps/sample_freq)
 print('number of iterations:', niters, f'each iteration runs {sample_freq} steps')
 for i in range(niters):
     simulation.step_AB_scheme(n_steps=sample_freq)
-    sigma_n = simulation.observe(obs_1)
-    sigma_x = simulation.observe(obs_2)
+    sigma_n = simulation.observe(obs_1).real
+    sigma_x = simulation.observe(obs_2).real
     print('t={:.3f}fs, sigma_n={}, sigma_x={}'.format(i*sample_freq*dt/Constants.fs, sigma_n, sigma_x))
     t_list.append(i*sample_freq*dt/Constants.fs)
     sigma_n_list.append(sigma_n)
