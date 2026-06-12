@@ -154,13 +154,12 @@ def _normalize_tensor_state(state: Array) -> Array:
     return (flat / denom[:, None]).reshape(state.shape)
 
 
-@partial(jax.jit, static_argnames=("normalize",))
+@jax.jit
 def _system_bath_unitary_trotter_step(
     state: Array,
     system_half: Array,
     bath_half: tuple[Array, ...],
     system_bath_full: tuple[Array, ...],
-    normalize: bool,
 ) -> Array:
     state = _apply_axis_operator(state, system_half, 1)
     for mode_index, operator in enumerate(bath_half):
@@ -170,8 +169,6 @@ def _system_bath_unitary_trotter_step(
     state = _apply_axis_operator(state, system_half, 1)
     for mode_index, operator in enumerate(bath_half):
         state = _apply_axis_operator(state, operator, mode_index + 2)
-    if normalize:
-        state = _normalize_tensor_state(state)
     return state
 
 
@@ -399,7 +396,6 @@ class SystemBathUnitarySimulation:
         system_hamiltonian: Any | None = None,
         bath_hamiltonians: Sequence[Any] | None = None,
         system_bath_hamiltonians: Sequence[Any] | None = None,
-        normalize: bool = True,
         dtype: Any = jnp.complex64,
     ) -> None:
         self.dtype = jnp.dtype(dtype)
@@ -408,7 +404,6 @@ class SystemBathUnitarySimulation:
         self.bath_dim = _prod(self.boson_dims)
         self.batch_size = positive_int(batch_size, "batch_size")
         self.dt = jnp.asarray(dt)
-        self.normalize = bool(normalize)
         self._pse = TensorProductPureStatesEnsemble(
             (self.system_dim, *self.boson_dims),
             self.batch_size,
@@ -510,7 +505,6 @@ class SystemBathUnitarySimulation:
                 self._system_half,
                 self._bath_half,
                 self._system_bath_full,
-                self.normalize,
             )
         self.state = state
         return self.state
@@ -565,7 +559,6 @@ class CoupledLindbladTrajectorySimulation:
             system_hamiltonian=system_hamiltonian,
             bath_hamiltonians=bath_hamiltonians,
             system_bath_hamiltonians=system_bath_hamiltonians,
-            normalize=False,
             dtype=dtype,
         )
         self.dtype = self.unitary_part.dtype

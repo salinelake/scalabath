@@ -37,7 +37,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--coupling-csv", type=Path, default="coupling_const.csv", help="CSV with columns omega_cm_inverse, lambda_cm_inverse")
     parser.add_argument("--periodic", action="store_true", help="use periodic boundary conditions for the tight-binding chain")
     parser.add_argument("--dtype", choices=tuple(DTYPES), default="complex64", help="complex dtype for JAX arrays")
-    parser.add_argument("--no-normalize", action="store_true", help="disable per-step state normalization in the Trotter solver")
     return parser.parse_args()
 
 def main() -> None:
@@ -81,7 +80,7 @@ def main() -> None:
     """
     initialize the simulation object.
     """
-    simulation = SystemBathUnitarySimulation(system_dim=args.chain_length, boson_dims=boson_dims.tolist(), dt=dt, batch_size=args.batch_size, normalize=not args.no_normalize, dtype=dtype)
+    simulation = SystemBathUnitarySimulation(system_dim=args.chain_length, boson_dims=boson_dims.tolist(), dt=dt, batch_size=args.batch_size, dtype=dtype)
     simulation.set_system_hamiltonian(
         tight_binding_hamiltonian(args.chain_length, hopping, periodic=args.periodic, dtype=dtype)
         )  ## the system Hamiltonian. shape: (chain_length, chain_length) or (batch_size, chain_length, chain_length)
@@ -133,7 +132,6 @@ def main() -> None:
         "hopping_internal": float(hopping),
         "hopping_mev": args.hopping_mev,
         "lambda_cm_inverse": lambda_cm.tolist(),
-        "normalize": not args.no_normalize,
         "num_modes": args.num_modes,
         "omega_cm_inverse": omega_cm.tolist(),
         "omega_internal": omega.tolist(),
