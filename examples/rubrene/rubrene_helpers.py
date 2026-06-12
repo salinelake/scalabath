@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
 from scalabath.operators_base import boson
 from scalabath.systems import TensorProductPureStatesEnsemble
 
-DEFAULT_BOSON_DIMS = np.asarray([9, 4, 2, 2, 2, 2, 2, 2, 2], dtype=int)
+# DEFAULT_BOSON_DIMS = np.asarray([9, 4, 2, 2, 2, 2, 2, 2, 2], dtype=int)  ## too small
+DEFAULT_BOSON_DIMS = np.asarray([12, 6, 4, 3, 3, 4, 3, 3, 4], dtype=int)
+
 DTYPES = {
     "complex64": jnp.complex64,
     "complex128": jnp.complex128,
@@ -69,10 +72,8 @@ def sample_initial_ensemble(
     boson_dims: np.ndarray,
     omega: np.ndarray,
     kbT: float,
-    seed: int,
     dtype: jnp.dtype,
 ) -> tuple[TensorProductPureStatesEnsemble, np.ndarray]:
-    rng = np.random.default_rng(seed)
     states_shape = (batch_size, chain_length, *boson_dims.tolist())
     states = np.zeros(states_shape, dtype=numpy_complex_dtype(dtype))
     chosen_levels = np.zeros((batch_size, boson_dims.size), dtype=int)
@@ -84,7 +85,7 @@ def sample_initial_ensemble(
             occupations = np.arange(mode_dim)
             weights = np.exp(-(occupations * omega[mode_index]) / kbT)
             probabilities = weights / weights.sum()
-            level = int(rng.choice(mode_dim, p=probabilities))
+            level = int(np.random.choice(mode_dim, p=probabilities))
             levels.append(level)
         chosen_levels[batch_index] = levels
         states[(batch_index, center_site, *levels)] = 1.0
@@ -143,8 +144,8 @@ def build_system_bath_hamiltonians(
         hamiltonians.append(jnp.asarray(matrix, dtype=dtype))
     return hamiltonians
 
-
-def site_populations_from_state(state: jnp.ndarray) -> np.ndarray:
+@jax.jit
+def site_populations_from_state(state: jnp.ndarray) -> jnp.ndarray:
     batch_size, chain_length = state.shape[:2]
     flattened_bath = state.reshape(batch_size, chain_length, -1)
-    return np.asarray(jnp.sum(jnp.abs(flattened_bath) ** 2, axis=-1).real)
+    return jnp.sum(jnp.abs(flattened_bath) ** 2, axis=-1).real

@@ -145,7 +145,13 @@ def _apply_system_mode_operator(state: Array, operator: Array, mode_index: int) 
         out = operator @ mat
     return jnp.moveaxis(out.reshape(moved.shape), 2, mode_axis)
 
+@jax.jit
+def _normalize_state(state: Array) -> Array:
+    norms = jnp.linalg.norm(state, axis=1)
+    denom = jnp.maximum(norms, jnp.asarray(1e-30, dtype=norms.dtype))
+    return (state / denom[:, None])
 
+@jax.jit
 def _normalize_tensor_state(state: Array) -> Array:
     batch_size = state.shape[0]
     flat = state.reshape(batch_size, -1)
@@ -153,7 +159,12 @@ def _normalize_tensor_state(state: Array) -> Array:
     denom = jnp.maximum(norms, jnp.asarray(1e-30, dtype=norms.dtype))
     return (flat / denom[:, None]).reshape(state.shape)
 
-
+@jax.jit
+def _normalize_density_matrix(density_matrix: Array) -> Array:
+    trace = jnp.trace(density_matrix, axis1=-2, axis2=-1)
+    denom = jnp.maximum(trace, jnp.asarray(1e-30, dtype=trace.dtype))
+    return (density_matrix / denom[:, None, None])
+ 
 @jax.jit
 def _system_bath_unitary_trotter_step(
     state: Array,
@@ -275,6 +286,11 @@ class UnitarySimulation:
             self.state = _apply_dense_evolution_operator(self.state, self._evo_ab)
         return self.state
 
+    def normalize(self) -> None:
+        """Normalize the state in place."""
+        self.state = _normalize_state(self.state)
+
+
     def observe(self, operator: Any) -> Array:
         """Return ``<psi|O|psi>`` for each state in the dense ensemble."""
 
@@ -362,6 +378,10 @@ class LindbladSimulation:
                 self.dt,
             )
         return self.density_matrices
+    
+    def normalize(self) -> None:
+        """Normalize the state in place."""
+        self.density_matrices = _normalize_density_matrix(self.density_matrices)
 
     def observe(self, operator: Any) -> Array:
         """Return ``Tr(rho O)`` for each density matrix."""
@@ -441,10 +461,10 @@ class SystemBathUnitarySimulation:
             raise ValueError("boson_states must contain one state per bosonic mode")
         self._pse.set_product_state((system_state, *boson_states))
 
-    def normalize_state(self) -> Array:
+    def normalize(self) -> None:
         """Normalize every batch state in place."""
 
-        return self._pse.normalize()
+        self.state = _normalize_tensor_state(self.state)
 
     def set_system_hamiltonian(self, hamiltonian: Any) -> None:
         self.system_hamiltonian = _as_local_matrix(
@@ -647,6 +667,11 @@ class CoupledLindbladTrajectorySimulation:
                 self.thresholds = self._sample_thresholds()
         self.state = state
         return self.state
+    
+    def normalize(self) -> None:
+        """Normalize the state in place."""
+        ## TODO: implement this
+        raise NotImplementedError("Normalization for coupled Lindblad trajectory simulation is not implemented yet.")
 
     def reduced_system_density_matrix(self) -> Array:
         """Return ``rho_S`` with shape ``(batch, system_dim, system_dim)``."""
