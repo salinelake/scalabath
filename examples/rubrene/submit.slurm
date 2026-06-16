@@ -17,57 +17,57 @@ export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export TEMPERATURE=300.0
 
 # export CUDA_VISIBLE_DEVICES=0
-# python main.py --temperature "${TEMPERATURE}" --run-id 0 &
+# python 01.main.py --temperature "${TEMPERATURE}" --run-id 0 &
 
 # export CUDA_VISIBLE_DEVICES=1
-# python main.py --temperature "${TEMPERATURE}" --run-id 1 &
+# python 01.main.py --temperature "${TEMPERATURE}" --run-id 1 &
 
 # export CUDA_VISIBLE_DEVICES=2
-# python main.py --temperature "${TEMPERATURE}" --run-id 2 &
+# python 01.main.py --temperature "${TEMPERATURE}" --run-id 2 &
 
 # export CUDA_VISIBLE_DEVICES=3
-# python main.py --temperature "${TEMPERATURE}" --run-id 3 &
+# python 01.main.py --temperature "${TEMPERATURE}" --run-id 3 &
 
 # wait
 
 export CUDA_VISIBLE_DEVICES=0
-python main.py --temperature "${TEMPERATURE}" --run-id 4 &
+python 01.main.py --temperature "${TEMPERATURE}" --run-id 4 &
 
 export CUDA_VISIBLE_DEVICES=1
-python main.py --temperature "${TEMPERATURE}" --run-id 5 &
+python 01.main.py --temperature "${TEMPERATURE}" --run-id 5 &
 
 export CUDA_VISIBLE_DEVICES=2
-python main.py --temperature "${TEMPERATURE}" --run-id 6 &
+python 01.main.py --temperature "${TEMPERATURE}" --run-id 6 &
 
 export CUDA_VISIBLE_DEVICES=3
-python main.py --temperature "${TEMPERATURE}" --run-id 7 &
+python 01.main.py --temperature "${TEMPERATURE}" --run-id 7 &
 
 wait
 
 export CUDA_VISIBLE_DEVICES=0
-python main.py --temperature "${TEMPERATURE}" --run-id 8 &
+python 01.main.py --temperature "${TEMPERATURE}" --run-id 8 &
 
 export CUDA_VISIBLE_DEVICES=1
-python main.py --temperature "${TEMPERATURE}" --run-id 9 &
+python 01.main.py --temperature "${TEMPERATURE}" --run-id 9 &
 
 export CUDA_VISIBLE_DEVICES=2
-python main.py --temperature "${TEMPERATURE}" --run-id 10 &
+python 01.main.py --temperature "${TEMPERATURE}" --run-id 10 &
 
 export CUDA_VISIBLE_DEVICES=3
-python main.py --temperature "${TEMPERATURE}" --run-id 11 &
+python 01.main.py --temperature "${TEMPERATURE}" --run-id 11 &
 
 wait
 
 export CUDA_VISIBLE_DEVICES=0
-python main.py --temperature "${TEMPERATURE}" --run-id 12 &
+python 01.main.py --temperature "${TEMPERATURE}" --run-id 12 &
 
 export CUDA_VISIBLE_DEVICES=1
-python main.py --temperature "${TEMPERATURE}" --run-id 13 &
+python 01.main.py --temperature "${TEMPERATURE}" --run-id 13 &
 
 export CUDA_VISIBLE_DEVICES=2
-python main.py --temperature "${TEMPERATURE}" --run-id 14 &
+python 01.main.py --temperature "${TEMPERATURE}" --run-id 14 &
 
 export CUDA_VISIBLE_DEVICES=3
-python main.py --temperature "${TEMPERATURE}" --run-id 15 &
+python 01.main.py --temperature "${TEMPERATURE}" --run-id 15 &
 
 wait

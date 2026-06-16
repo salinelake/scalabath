@@ -96,7 +96,7 @@ def test_system_bath_unitary_trotter_matches_dense_local_factorization() -> None
 
 
 def test_system_bath_thermal_sampling_matches_rubrene_helper() -> None:
-    from examples.rubrene.rubrene_helpers import sample_initial_ensemble
+    from examples.rubrene.helpers import sample_initial_ensemble
 
     batch_size = 4
     chain_length = 5
