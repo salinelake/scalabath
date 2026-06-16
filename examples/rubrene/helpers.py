@@ -1,13 +1,17 @@
 from __future__ import annotations
 
-from pathlib import Path
 import json
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
 from scalabath.operators_base import boson
+
+if TYPE_CHECKING:
+    from scalabath.simulations import SystemBathUnitarySimulation
 
 def save_metadata(args, boson_dims: np.ndarray, center_site: int, lambda_cm: np.ndarray, omega_cm: np.ndarray, output_path: Path) -> Path:
     metadata = {
