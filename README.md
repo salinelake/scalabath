@@ -89,9 +89,9 @@ $$
 and
 
 $$
-\hat{H}_{SB}=\sum_{j=1}^{n}\sum_{k=1}^{N}|j\rangle\langle j|\otimes
+\hat{H}_{SB}=\sum_{j=1}^{n} \sum_{k=1}^{N} |j\rangle\langle j|  \otimes
 (g_{k}e^{i\phi_{jk}}\hat{b}_{k}
-+g_{k}^{*}e^{-i\phi_{jk}^{*}}\hat{b}_{k}^{\dagger}).
++g_{k}^{*} e^{-i\phi_{jk}^{*}}\hat{b}_{k}^{\dagger}).
 $$
 
 Then the BCF is given by:

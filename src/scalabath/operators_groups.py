@@ -21,12 +21,6 @@ def _as_batch_prefactor(prefactor: Any, batch_size: int, dtype: Any, name: str) 
     raise ValueError(f"{name} shape must be scalar or ({batch_size},)")
 
 
-def _maybe_unbatch_operator(operator: Array, batch_size: int) -> Array:
-    if batch_size == 1:
-        return operator[0]
-    return operator
-
-
 ############################################################################################
 ###################### Basic classes for building many-body operators ######################
 ############################################################################################
@@ -81,7 +75,7 @@ class OperatorGroup:
         """Sum up the operators in the group. To be implemented in subclasses.
 
         Returns:
-            The total operator matrix.
+            Total operator matrices with shape ``(batch_size, hilbert_dim, hilbert_dim)``.
         """
         raise NotImplementedError("sum_operators is not implemented in the base class")
 
@@ -155,7 +149,7 @@ class BosonOperatorGroup(OperatorGroup):
         """Sum up the operators in the group.
 
         Returns:
-            A matrix, or batched matrices when ``batch_size > 1``.
+            Operator matrices with shape ``(batch_size, hilbert_dim, hilbert_dim)``.
         """
         total_ops = jnp.zeros(
             (self.batch_size, self.hilbert_dim, self.hilbert_dim),
@@ -164,7 +158,7 @@ class BosonOperatorGroup(OperatorGroup):
         for descriptor, prefactor in zip(self._descriptors, self._prefactors, strict=True):
             ops = [self.local[idx].get_operator(d) for idx, d in enumerate(descriptor)]
             total_ops += compose(ops)[None, :, :] * prefactor[:, None, None]
-        return _maybe_unbatch_operator(total_ops, self.batch_size)
+        return total_ops
 
 
 class SpinOperatorGroup(OperatorGroup):
@@ -204,7 +198,7 @@ class SpinOperatorGroup(OperatorGroup):
         """Sum up the operators in the group.
 
         Returns:
-            A matrix, or batched matrices when ``batch_size > 1``.
+            Operator matrices with shape ``(batch_size, hilbert_dim, hilbert_dim)``.
         """
         total_ops = jnp.zeros(
             (self.batch_size, self.hilbert_dim, self.hilbert_dim),
@@ -213,7 +207,7 @@ class SpinOperatorGroup(OperatorGroup):
         for descriptor, prefactor in zip(self._descriptors, self._prefactors, strict=True):
             ops = [self.local.get_operator(d) for d in descriptor]
             total_ops += compose(ops)[None, :, :] * prefactor[:, None, None]
-        return _maybe_unbatch_operator(total_ops, self.batch_size)
+        return total_ops
 
 
 class TightBindingChainOperatorGroup(OperatorGroup):
@@ -280,7 +274,7 @@ class TightBindingChainOperatorGroup(OperatorGroup):
         """Sum up the operators in the group.
 
         Returns:
-            A matrix, or batched matrices when ``batch_size > 1``.
+            Operator matrices with shape ``(batch_size, hilbert_dim, hilbert_dim)``.
         """
         total_ops = jnp.zeros(
             (self.batch_size, self.hilbert_dim, self.hilbert_dim),
@@ -288,10 +282,8 @@ class TightBindingChainOperatorGroup(OperatorGroup):
         )
         for descriptor, prefactor in zip(self._descriptors, self._prefactors, strict=True):
             total_ops += self.local.get_operator(descriptor)[None, :, :] * prefactor[:, None, None]
-        return _maybe_unbatch_operator(total_ops, self.batch_size)
+        return total_ops
 
-
-## TODO: Implement TightBindingSquareOperatorGroup
 
 
 class ComposedOperatorGroups(OperatorGroup):
@@ -325,7 +317,7 @@ class ComposedOperatorGroups(OperatorGroup):
         raise ValueError("cannot add an operator directly to ComposedOperatorGroups")
 
     def sum_operators(self) -> Array:
-        """Return the tensor product of subsystem group sums."""
+        """Return tensor-product sums with shape ``(batch_size, hilbert_dim, hilbert_dim)``."""
         all_groups = [group.sum_operators() for group in self.operator_groups]
         return compose(all_groups)
 

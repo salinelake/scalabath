@@ -99,7 +99,8 @@ def compose(operators: Sequence[Array]) -> Array:
 
     Args:
         operators: Non-empty sequence of rank-2 or rank-3 arrays. The first operator acts
-            on the leftmost subsystem in the product Hilbert space.
+            on the leftmost subsystem in the product Hilbert space. Rank-3 arrays are
+            interpreted as batched operators and must have the same leading batch size.
 
     Returns:
         Kronecker product of all input operators.
@@ -119,6 +120,9 @@ def compose(operators: Sequence[Array]) -> Array:
         return compose_rank_2(ops)
     elif ops[0].ndim == 3:
         batch_size = ops[0].shape[0]
+        for operator in ops[1:]:
+            if operator.shape[0] != batch_size:
+                raise ValueError("batched operators must have the same batch size")
         result = []
         for batch_idx in range(batch_size):
             result.append(compose_rank_2([op[batch_idx] for op in ops]))

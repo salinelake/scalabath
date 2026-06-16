@@ -13,6 +13,7 @@ from scalabath.operators_groups import (
     SpinOperatorGroup,
     TightBindingChainOperatorGroup,
 )
+from scalabath.simulations import UnitarySimulation
 
 pytestmark = pytest.mark.unit
 
@@ -34,8 +35,11 @@ def test_tls_pauli_matrices_and_spin_group_sum() -> None:
     group = SpinOperatorGroup(1, "field-x")
     group.add_operator("X", prefactor=0.5)
 
+    group_sum = group.sum_operators()
+
     np.testing.assert_allclose(np.asarray(local.sigma_x), np.asarray([[0, 1], [1, 0]]))
-    np.testing.assert_allclose(np.asarray(group.sum_operators()), 0.5 * np.asarray(local.sigma_x))
+    assert group_sum.shape == (1, 2, 2)
+    np.testing.assert_allclose(np.asarray(group_sum[0]), 0.5 * np.asarray(local.sigma_x))
 
 
 def test_tight_binding_1d_sequence_conventions() -> None:
@@ -68,8 +72,15 @@ def test_operator_groups_compose_subsystems() -> None:
 
     composed = ComposedOperatorGroups("spin-boson", [spin_group, boson_group])
 
-    expected = jnp.kron(spin_group.sum_operators(), boson_group.sum_operators())
-    np.testing.assert_allclose(np.asarray(composed.sum_operators()), np.asarray(expected))
+    spin_sum = spin_group.sum_operators()
+    boson_sum = boson_group.sum_operators()
+    expected = jnp.kron(spin_sum[0], boson_sum[0])[None, :, :]
+    composed_sum = composed.sum_operators()
+
+    assert spin_sum.shape == (1, 2, 2)
+    assert boson_sum.shape == (1, 2, 2)
+    assert composed_sum.shape == (1, 4, 4)
+    np.testing.assert_allclose(np.asarray(composed_sum), np.asarray(expected))
 
 
 def test_tight_binding_group_sums_static_terms() -> None:
@@ -80,4 +91,16 @@ def test_tight_binding_group_sums_static_terms() -> None:
     expected = np.zeros((3, 3), dtype=np.complex128)
     expected[2, 1] = 2
     expected[2, 2] = 0.5
-    np.testing.assert_allclose(np.asarray(group.sum_operators()), expected)
+    group_sum = group.sum_operators()
+
+    assert group_sum.shape == (1, 3, 3)
+    np.testing.assert_allclose(np.asarray(group_sum[0]), expected)
+
+
+def test_singleton_operator_group_batch_is_not_broadcast_to_larger_simulation_batch() -> None:
+    group = SpinOperatorGroup(1, "field-x", batch_size=1, dtype=jnp.complex128)
+    group.add_operator("X")
+    simulation = UnitarySimulation(2, batch_size=2, dtype=jnp.complex128)
+
+    with pytest.raises(ValueError, match="operator must have shape"):
+        simulation.add_operator_group_to_hamiltonian(group)

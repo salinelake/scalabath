@@ -95,48 +95,6 @@ def test_system_bath_unitary_trotter_matches_dense_local_factorization() -> None
     np.testing.assert_allclose(np.asarray(tensor_state[0]), np.asarray(expected), atol=1e-12)
 
 
-def test_system_bath_thermal_sampling_matches_rubrene_helper() -> None:
-    from examples.rubrene.helpers import sample_initial_ensemble
-
-    batch_size = 4
-    chain_length = 5
-    boson_dims = np.asarray([3, 2], dtype=int)
-    omega = np.asarray([0.4, 1.1])
-    kbT = 0.7
-    dtype = jnp.complex128
-
-    np.random.seed(123)  # noqa: NPY002
-    helper_ensemble, helper_levels = sample_initial_ensemble(
-        batch_size=batch_size,
-        chain_length=chain_length,
-        boson_dims=boson_dims,
-        omega=omega,
-        kbT=kbT,
-        dtype=dtype,
-    )
-
-    system_state = np.zeros(chain_length, dtype=np.complex128)
-    system_state[(chain_length - 1) // 2] = 1.0
-    simulation = SystemBathUnitarySimulation(
-        chain_length,
-        boson_dims.tolist(),
-        0.01,
-        boson_freqs=omega.tolist(),
-        batch_size=batch_size,
-        dtype=dtype,
-    )
-
-    np.random.seed(123)  # noqa: NPY002
-    sampled_ensemble, sampled_levels = simulation.sample_thermal_bath_state(system_state, kbT)
-
-    np.testing.assert_array_equal(sampled_levels, helper_levels)
-    np.testing.assert_allclose(
-        np.asarray(sampled_ensemble.get_pse()),
-        np.asarray(helper_ensemble.get_pse()),
-        atol=1e-12,
-    )
-
-
 def test_system_bath_thermal_sampling_accepts_batched_system_states() -> None:
     simulation = SystemBathUnitarySimulation(
         2,

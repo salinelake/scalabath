@@ -20,7 +20,7 @@ from scalabath.systems import (
     PureStatesEnsemble,
     TensorProductPureStatesEnsemble,
 )
-from scalabath.utilities import adjoint, positive_int
+from scalabath.utilities import adjoint, positive_int, ABAd
 
 
 def _prod(values: Sequence[int]) -> int:
@@ -78,12 +78,22 @@ def _apply_dense_evolution_operator(states: Array, evolution_operator: Array) ->
 
 
 @jax.jit
-def _dense_lindblad_step(
+def _dense_lindblad_euler_step(
     density_matrices: Array,
     hamiltonian: Array,
     jump_operators: Array,
     dt: Array,
 ) -> Array:
+    """
+    Solve the Lindblad equation for a single time step using a naive first-order Euler method. Should not be used for long time evolution.
+    Args:
+        density_matrices: Density matrices with shape (batch, hilbert_dim, hilbert_dim).
+        hamiltonian: Hamiltonian with shape (batch, hilbert_dim, hilbert_dim).
+        jump_operators: Jump operators with shape (n_jumps, batch, hilbert_dim, hilbert_dim).
+        dt: Time step.
+    Returns:
+        Density matrices with shape (batch, hilbert_dim, hilbert_dim).
+    """
     left = hamiltonian @ density_matrices
     right = density_matrices @ hamiltonian
     coherent = -1j * (left - right)
@@ -99,6 +109,34 @@ def _dense_lindblad_step(
     dissipative = jax.vmap(one_jump)(jump_operators).sum(axis=0)
     return density_matrices + dt * (coherent + dissipative)
 
+@jax.jit
+def _dense_lindblad_step(
+    density_matrices: Array,
+    hamiltonian: Array,
+    jump_operators: Array,
+    dt: Array,
+) -> Array:
+    """
+    Solve the Lindblad equation for a single time step using a structure preserving integrator. Positivity is preserved by construction. But trace is not conserved.
+    Args:
+        density_matrices: Density matrices with shape (batch, hilbert_dim, hilbert_dim).
+        hamiltonian: Hamiltonian with shape (batch, hilbert_dim, hilbert_dim).
+        jump_operators: Jump operators with shape (n_jumps, batch, hilbert_dim, hilbert_dim).
+        dt: Time step.
+    Returns:
+        Density matrices with shape (batch, hilbert_dim, hilbert_dim).
+    """
+    ## get the effective Hamiltonian H_eff = H - 1/2 * i * \sum_k L_k^\dagger L_k
+    ham_eff = hamiltonian * 1.0
+    for jump_operator in jump_operators:
+        ham_eff = ham_eff - 1j * 0.5 * adjoint(jump_operator) @ jump_operator
+    ## first step: rho -> (1-i*dt*H_eff)rho(1+i*dt*H_eff)   
+    identity = jnp.eye(density_matrices.shape[-1], dtype=density_matrices.dtype)
+    rho = ABAd(identity[None, :, :] - 1j * dt * ham_eff, density_matrices)
+    ## second step: rho -> rho + dt * \sum_k L_k \rho L_k^\dagger
+    for jump_operator in jump_operators:
+        rho += dt * ABAd(jump_operator, rho)
+    return rho
 
 @jax.jit
 def _batch_expectation_pure_dense(states: Array, operator: Array) -> Array:
@@ -234,7 +272,6 @@ class UnitarySimulation:
                 hamiltonian, self.hilbert_dim, self.batch_size, self.dtype
             )
         self._evo_exact: Array | None = None
-        self._evo_ab: Array | None = None
 
     @property
     def state(self) -> Array:
@@ -253,21 +290,11 @@ class UnitarySimulation:
             operator_group, self.hilbert_dim, self.batch_size, self.dtype
         )
         self._evo_exact = None
-        self._evo_ab = None
 
     def _compute_exact_evolution_operator(self) -> None:
         self._evo_exact = _matrix_exponential(self.hamiltonian, -1j * self.dt)
 
-    def _compute_ab_evolution_operator(self) -> None:
-        diagonal = jnp.diagonal(self.hamiltonian, axis1=-2, axis2=-1)
-        diagonal_factor = jnp.exp(-1j * self.dt * diagonal)
-        identity = jnp.eye(self.hilbert_dim, dtype=self.dtype)[None, :, :]
-        off_diagonal_mask = 1 - identity
-        off_diagonal = self.hamiltonian * off_diagonal_mask
-        off_diagonal_factor = identity - 1j * self.dt * off_diagonal
-        self._evo_ab = off_diagonal_factor * diagonal_factor[:, None, :]
-
-    def step_exact(self, n_steps: int = 1) -> Array:
+    def step(self, n_steps: int = 1) -> Array:
         """Advance by ``n_steps`` using dense matrix exponentials."""
 
         n_steps = positive_int(n_steps, "n_steps")
@@ -276,22 +303,7 @@ class UnitarySimulation:
         for _ in range(n_steps):
             self.state = _apply_dense_evolution_operator(self.state, self._evo_exact)
         return self.state
-
-    def step(self, n_steps: int = 1) -> Array:
-        """Alias for :meth:`step_exact`."""
-
-        return self.step_exact(n_steps)
-
-    def step_AB_scheme(self, n_steps: int = 1) -> Array:
-        """Advance with the dense diagonal/off-diagonal first-order AB scheme."""
-
-        n_steps = positive_int(n_steps, "n_steps")
-        if self._evo_ab is None:
-            self._compute_ab_evolution_operator()
-        for _ in range(n_steps):
-            self.state = _apply_dense_evolution_operator(self.state, self._evo_ab)
-        return self.state
-
+        
     def normalize(self) -> None:
         """Normalize the state in place."""
         self.state = _normalize_state(self.state)
@@ -371,8 +383,21 @@ class LindbladSimulation:
             axis=0,
         )
 
-    def step(self, n_steps: int = 1) -> Array:
+    def step_euler(self, n_steps: int = 1) -> Array:
         """Advance by ``n_steps`` explicit Euler Lindblad steps."""
+
+        n_steps = positive_int(n_steps, "n_steps")
+        for _ in range(n_steps):
+            self.density_matrices = _dense_lindblad_euler_step(
+                self.density_matrices,
+                self.hamiltonian,
+                self.jump_operators,
+                self.dt,
+            )
+        return self.density_matrices
+
+    def step(self, n_steps: int = 1) -> Array:
+        """Advance by ``n_steps`` structure preserving Lindblad steps."""
 
         n_steps = positive_int(n_steps, "n_steps")
         for _ in range(n_steps):
@@ -383,7 +408,6 @@ class LindbladSimulation:
                 self.dt,
             )
         return self.density_matrices
-
     def normalize(self) -> None:
         """Normalize the state in place."""
         self.density_matrices = _normalize_density_matrix(self.density_matrices)
@@ -426,6 +450,7 @@ class SystemBathUnitarySimulation:
     ) -> None:
         self.dtype = jnp.dtype(dtype)
         self.system_dim = positive_int(system_dim, "system_dim")
+        ## initialize boson-bath frequencies and basis
         self.boson_dims = tuple(positive_int(dim, "boson_dim") for dim in boson_dims)
         self.nmodes = len(self.boson_dims)
         if boson_freqs is None:
@@ -436,13 +461,16 @@ class SystemBathUnitarySimulation:
                 raise ValueError("boson_dims and boson_freqs must have the same length")
         self.boson_basis = tuple(boson(dim - 1, dtype=self.dtype) for dim in self.boson_dims)
         self.bath_dim = _prod(self.boson_dims)
+        ## initialize batch size and time step
         self.batch_size = positive_int(batch_size, "batch_size")
         self.dt = jnp.asarray(dt)
+        ## initialize tensor-product pure-state ensemble
         self._pse = TensorProductPureStatesEnsemble(
             (self.system_dim, *self.boson_dims),
             self.batch_size,
             dtype=self.dtype,
         )
+        ## initialize the Hamiltonian if provided
         self.system_hamiltonian = _zeros_local(self.system_dim, self.dtype)
         self.bath_hamiltonians: tuple[Array, ...] = tuple(
             _zeros_local(dim, self.dtype) for dim in self.boson_dims
@@ -644,6 +672,7 @@ class CoupledLindbladTrajectorySimulation:
         boson_dims: Sequence[int],
         dt: float,
         *,
+        boson_freqs: Sequence[float] | None = None,
         batch_size: int = 1,
         system_hamiltonian: Any | None = None,
         bath_hamiltonians: Sequence[Any] | None = None,
@@ -652,19 +681,24 @@ class CoupledLindbladTrajectorySimulation:
         key: Array | None = None,
         dtype: Any = jnp.complex64,
     ) -> None:
+        ## initialize the unitary part. Sanity check is done inside.
         self.unitary_part = SystemBathUnitarySimulation(
             system_dim,
             boson_dims,
             dt,
+            boson_freqs=boson_freqs,
             batch_size=batch_size,
             system_hamiltonian=system_hamiltonian,
             bath_hamiltonians=bath_hamiltonians,
             system_bath_hamiltonians=system_bath_hamiltonians,
             dtype=dtype,
         )
+        ## 
         self.dtype = self.unitary_part.dtype
         self.system_dim = self.unitary_part.system_dim
         self.boson_dims = self.unitary_part.boson_dims
+        self.nmodes = self.unitary_part.nmodes
+        self.boson_freqs = self.unitary_part.boson_freqs
         self.batch_size = self.unitary_part.batch_size
         self.dt = self.unitary_part.dt
         self.key = jax.random.PRNGKey(0) if key is None else key

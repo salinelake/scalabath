@@ -420,16 +420,6 @@ class TensorProductDensityMatrixEnsemble:
             )
         self._dme = density_matrices
 
-    def get_rho(self) -> Array:
-        """Alias for :meth:`get_dme`."""
-
-        return self.get_dme()
-
-    def set_rho(self, rho: Any) -> None:
-        """Alias for :meth:`set_dme`."""
-
-        self.set_dme(rho)
-
     @property
     def trace(self) -> Array:
         """Return one trace per batch element as shape ``(batch,)``."""
@@ -446,6 +436,29 @@ class TensorProductDensityMatrixEnsemble:
         denom = traces.reshape((self.batch_size, *([1] * (2 * len(self.subsystem_dims)))))
         self._dme = density_matrices / denom
         return self._dme
+
+    def set_product_state(self, factors: Sequence[Any]) -> None:
+        """Set a pure, product state over all tensor factors.
+
+        Args:
+            factors: One one-dimensional state vector per subsystem. Each factor
+                must have shape ``(subsystem_dims[i],)``. The resulting tensor
+                product is broadcast across the ensemble batch.
+        """
+        if len(factors) != len(self.subsystem_dims):
+            raise ValueError("factors must contain one state per subsystem")
+        product = jnp.asarray(factors[0], dtype=self.dtype)
+        if product.shape != (self.subsystem_dims[0],):
+            raise ValueError("each product-state factor must match its subsystem dimension")
+        for factor, dim in zip(factors[1:], self.subsystem_dims[1:], strict=True):
+            factor = jnp.asarray(factor, dtype=self.dtype)
+            if factor.shape != (dim,):
+                raise ValueError("each product-state factor must match its subsystem dimension")
+            product = product[..., None] * factor.reshape((1,) * product.ndim + (dim,))
+
+        flat_product = product.reshape(self.hilbert_dim)
+        density_matrix = flat_product[:, None] * jnp.conjugate(flat_product[None, :])
+        self.set_dme(density_matrix)
 
     def reduced_density_matrix(self, keep: int | Sequence[int] = 0) -> Array:
         """Trace out all subsystems except ``keep``.

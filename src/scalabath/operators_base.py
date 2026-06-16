@@ -167,11 +167,11 @@ class tight_binding_1d:
     def hopping(self, from_site: int, to_site: int, amplitude: complex = 1.0) -> Array:
         """Return ``amplitude * |to_site><from_site|``."""
 
-        from_site = self._validate_site(from_site)
-        to_site = self._validate_site(to_site)
+        source = self._validate_site(from_site)
+        target = self._validate_site(to_site)
         return (
             jnp.zeros((self.n_sites, self.n_sites), dtype=self.dtype)
-            .at[to_site, from_site]
+            .at[target, source]
             .set(jnp.asarray(amplitude, dtype=self.dtype))
         )
 
@@ -278,6 +278,18 @@ class tight_binding_2d:
             .set(jnp.asarray(amplitude, dtype=self.dtype))
         )
 
+    def onsite_potential(self, values: Array) -> Array:
+        """Return a diagonal on-site potential matrix.
+
+        Args:
+            values: Array shaped ``(nx, ny)``.
+        """
+
+        values_array = jnp.asarray(values, dtype=self.dtype)
+        if values_array.shape != (self.nx, self.ny):
+            raise ValueError("onsite potential values must have shape (nx, ny)")
+        return jnp.diag(values_array.reshape(-1))
+
     def hopping(
         self,
         from_site: tuple[int, int],
@@ -293,27 +305,16 @@ class tight_binding_2d:
             .at[target, source]
             .set(jnp.asarray(amplitude, dtype=self.dtype))
         )
-
-    def onsite_potential(self, values: Array) -> Array:
-        """Return a diagonal on-site potential matrix.
-
-        Args:
-            values: Array shaped ``(nx, ny)``.
-        """
-
-        values_array = jnp.asarray(values, dtype=self.dtype)
-        if values_array.shape != (self.nx, self.ny):
-            raise ValueError("onsite potential values must have shape (nx, ny)")
-        return jnp.diag(values_array.reshape(-1))
-
-    def nearest_neighbor_hopping(self, amplitude: complex = 1.0) -> Array:
+    
+    def nearest_neighbor_hopping(self, amplitude: tuple[complex, complex] = (1.0, 1.0)) -> Array:
         """Return Hermitian nearest-neighbor hopping on the 2D lattice."""
 
         total = jnp.zeros((self.hilbert_dim, self.hilbert_dim), dtype=self.dtype)
         directions = ((1, 0), (0, 1))
         for x in range(self.nx):
             for y in range(self.ny):
-                for dx, dy in directions:
+                for direction, amp in zip(directions, amplitude):
+                    dx, dy = direction
                     nx = x + dx
                     ny = y + dy
                     if self.periodic:
@@ -321,8 +322,8 @@ class tight_binding_2d:
                         ny %= self.ny
                     elif nx >= self.nx or ny >= self.ny:
                         continue
-                    total = total + self.hopping((x, y), (nx, ny), amplitude)
-                    total = total + self.hopping((nx, ny), (x, y), jnp.conjugate(amplitude))
+                    total = total + self.hopping((x, y), (nx, ny), amp)
+                    total = total + self.hopping((nx, ny), (x, y), jnp.conjugate(amp))
         return total
 
     def get_operator(self, descriptor_sequence: str) -> Array:

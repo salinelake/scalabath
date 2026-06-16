@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Data files
+data*/
+*.out
+*.err
+archived/

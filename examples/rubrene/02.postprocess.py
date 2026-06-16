@@ -105,18 +105,12 @@ if __name__ == "__main__":
 
     ## simulation parameters
     # temp_list = np.array([200, 250, 300, 350, 400])
-    temp_list = np.array([300])
+    temp_list = np.array([200, 300, 400])
     L = 150
-    nrun = 1
+    nrun = 16
     batch = 5
     slope_list = np.zeros(len(temp_list))
     data_folder = f"data_L{L}_300fs"
-
-    ## load mobility reference data
-    mobility_ref = np.loadtxt("mobility.csv", delimiter=',')
-    ref_temp = mobility_ref[:, 0]
-    ref_dmrg = (mobility_ref[:, 1] + mobility_ref[:, 2])/2
-    ref_fgr = (mobility_ref[:, 3] + mobility_ref[:, 4])/2
 
     ## plot comparison
     fig, ax = plt.subplots(2,1, figsize=(7, 8))
@@ -124,19 +118,25 @@ if __name__ == "__main__":
         msd_batch = []
         for run_id in range(nrun):
             input_path = f'{data_folder}/T{T}_batch{batch}_run{run_id}.npz'
+            ## load metadata
+            metadata_path = input_path.replace(".npz", ".json")
+            with open(metadata_path, "r") as f:
+                metadata = json.load(f)
+            center_site = int(metadata.get("center_site", None))
+            ## plot population
             population_path = input_path.replace(".npz", "_population.png")
             plot_population(input_path, population_path)
+            ## load site populations
             with np.load(input_path, allow_pickle=False) as data:
                 time_fs = np.asarray(data["time_fs"], dtype=float)
                 site_populations = np.asarray(data["site_populations"], dtype=float)
-                metadata = load_metadata(data)
-            center_site = int(metadata.get("center_site", (site_populations.shape[-1] - 1) // 2))
+            ## calculate MSD
             msd, mean_position = calculate_msd(site_populations, center_site=center_site)
             msd_batch.append(msd) # shape: (time, batch)
         msd_batch = np.concatenate(msd_batch, axis=1) # shape: (time, batch * 4)
         msd_mean = np.mean(msd_batch, axis=1)
         msd_slope = (msd_mean[1:] - msd_mean[:-1]) / (time_fs[1:] - time_fs[:-1])
-        slope_list[idx] = (msd_mean[300] - msd_mean[250]) / (time_fs[300] - time_fs[250])
+        slope_list[idx] = (msd_mean[-1] - msd_mean[-51]) / (time_fs[-1] - time_fs[-51])
         msd_sem = np.std(msd_batch, axis=1, ddof=1) / np.sqrt(msd_batch.shape[1])
         ax[0].plot(time_fs, msd_mean, linewidth=2.0, label=f"T={T}K")
         ax[0].fill_between(time_fs, msd_mean - msd_sem, msd_mean + msd_sem, color="C0", alpha=0.25)
@@ -149,8 +149,14 @@ if __name__ == "__main__":
     ax[1].legend()
     ax[0].grid(True)
     ax[1].grid(True)
-    fig.savefig("L150_msd_dt01fs.png", dpi=200)
+    fig.savefig("L150_msd.png", dpi=200)
     plt.close(fig)
+
+    ## load mobility reference data
+    mobility_ref = np.loadtxt("mobility.csv", delimiter=',')
+    ref_temp = mobility_ref[:, 0]
+    ref_dmrg = (mobility_ref[:, 1] + mobility_ref[:, 2])/2
+    ref_fgr = (mobility_ref[:, 3] + mobility_ref[:, 4])/2
 
     ## calculate mobility
     rubrene_R = 7.19 * Constants.Angstrom
