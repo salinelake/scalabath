@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from functools import partial, reduce
+from functools import reduce
 from operator import mul
 from typing import Any
 
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
+import numpy as np
 from jax import Array
 
+from scalabath.operators_base import boson
 from scalabath.operators_groups import OperatorGroup
 from scalabath.systems import (
     DensityMatrixEnsemble,
@@ -72,7 +74,7 @@ def _matrix_exponential(matrix: Array, coefficient: Array) -> Array:
 
 @jax.jit
 def _apply_dense_evolution_operator(states: Array, evolution_operator: Array) -> Array:
-    return (evolution_operator @ states[:,:, None])[:,:, 0]
+    return (evolution_operator @ states[:, :, None])[:, :, 0]
 
 
 @jax.jit
@@ -145,11 +147,13 @@ def _apply_system_mode_operator(state: Array, operator: Array, mode_index: int) 
         out = operator @ mat
     return jnp.moveaxis(out.reshape(moved.shape), 2, mode_axis)
 
+
 @jax.jit
 def _normalize_state(state: Array) -> Array:
     norms = jnp.linalg.norm(state, axis=1)
     denom = jnp.maximum(norms, jnp.asarray(1e-30, dtype=norms.dtype))
-    return (state / denom[:, None])
+    return state / denom[:, None]
+
 
 @jax.jit
 def _normalize_tensor_state(state: Array) -> Array:
@@ -159,12 +163,14 @@ def _normalize_tensor_state(state: Array) -> Array:
     denom = jnp.maximum(norms, jnp.asarray(1e-30, dtype=norms.dtype))
     return (flat / denom[:, None]).reshape(state.shape)
 
+
 @jax.jit
 def _normalize_density_matrix(density_matrix: Array) -> Array:
     trace = jnp.trace(density_matrix, axis1=-2, axis2=-1)
     denom = jnp.maximum(trace, jnp.asarray(1e-30, dtype=trace.dtype))
-    return (density_matrix / denom[:, None, None])
- 
+    return density_matrix / denom[:, None, None]
+
+
 @jax.jit
 def _system_bath_unitary_trotter_step(
     state: Array,
@@ -290,7 +296,6 @@ class UnitarySimulation:
         """Normalize the state in place."""
         self.state = _normalize_state(self.state)
 
-
     def observe(self, operator: Any) -> Array:
         """Return ``<psi|O|psi>`` for each state in the dense ensemble."""
 
@@ -378,7 +383,7 @@ class LindbladSimulation:
                 self.dt,
             )
         return self.density_matrices
-    
+
     def normalize(self) -> None:
         """Normalize the state in place."""
         self.density_matrices = _normalize_density_matrix(self.density_matrices)
@@ -412,6 +417,7 @@ class SystemBathUnitarySimulation:
         boson_dims: Sequence[int],
         dt: float,
         *,
+        boson_freqs: Sequence[float] | None = None,
         batch_size: int = 1,
         system_hamiltonian: Any | None = None,
         bath_hamiltonians: Sequence[Any] | None = None,
@@ -421,6 +427,14 @@ class SystemBathUnitarySimulation:
         self.dtype = jnp.dtype(dtype)
         self.system_dim = positive_int(system_dim, "system_dim")
         self.boson_dims = tuple(positive_int(dim, "boson_dim") for dim in boson_dims)
+        self.nmodes = len(self.boson_dims)
+        if boson_freqs is None:
+            self.boson_freqs: tuple[float, ...] | None = None
+        else:
+            self.boson_freqs = tuple(float(freq) for freq in boson_freqs)
+            if self.nmodes != len(self.boson_freqs):
+                raise ValueError("boson_dims and boson_freqs must have the same length")
+        self.boson_basis = tuple(boson(dim - 1, dtype=self.dtype) for dim in self.boson_dims)
         self.bath_dim = _prod(self.boson_dims)
         self.batch_size = positive_int(batch_size, "batch_size")
         self.dt = jnp.asarray(dt)
@@ -480,6 +494,73 @@ class SystemBathUnitarySimulation:
             for matrix, dim in zip(hamiltonians, self.boson_dims, strict=True)
         )
         self._propagators_ready = False
+
+    def set_bath_harmonic_hamiltonians(self) -> None:
+        if self.boson_freqs is None:
+            raise ValueError("boson_freqs must be provided to build harmonic bath Hamiltonians")
+        hamiltonians = []
+        for freq, basis in zip(self.boson_freqs, self.boson_basis, strict=True):
+            mode_omega = jnp.asarray(freq, dtype=self.dtype)
+            hamiltonians.append(mode_omega * basis.number)
+        self.set_bath_hamiltonians(hamiltonians)
+
+    def sample_thermal_bath_state(
+        self,
+        system_state: Any,
+        kbT: float,
+    ) -> tuple[TensorProductPureStatesEnsemble, np.ndarray]:
+        """Sample product states with thermally occupied bath basis states.
+
+        Args:
+            system_state: System state shaped ``(system_dim,)`` or
+                ``(batch_size, system_dim)``. A one-dimensional state is
+                broadcast across the batch.
+            kbT: Thermal energy in the same units as ``boson_freqs``.
+
+        Returns:
+            A tensor-product pure-state ensemble with native shape
+            ``(batch_size, system_dim, *boson_dims)`` and an integer array of
+            chosen bath occupation levels shaped ``(batch_size, nmodes)``.
+        """
+        if self.boson_freqs is None:
+            raise ValueError("boson_freqs must be provided to sample thermal bath states")
+        kbT_value = float(kbT)
+        if kbT_value <= 0:
+            raise ValueError("kbT must be positive")
+
+        system_states = jnp.asarray(system_state, dtype=self.dtype)
+        if system_states.shape == (self.system_dim,):
+            system_states = jnp.broadcast_to(system_states, (self.batch_size, self.system_dim))
+        elif system_states.shape != (self.batch_size, self.system_dim):
+            raise ValueError(
+                "system_state must have shape (system_dim,) or (batch_size, system_dim)"
+            )
+
+        states_shape = (self.batch_size, self.system_dim, *self.boson_dims)
+        states = np.zeros(states_shape, dtype=np.dtype(self.dtype))
+        system_states_np = np.asarray(system_states)
+        chosen_levels = np.zeros((self.batch_size, self.nmodes), dtype=int)
+
+        for batch_index in range(self.batch_size):
+            levels = []
+            for mode_index, mode_dim in enumerate(self.boson_dims):
+                occupations = np.arange(mode_dim)
+                weights = np.exp(-(occupations * self.boson_freqs[mode_index]) / kbT_value)
+                probabilities = weights / weights.sum()
+                level = int(np.random.choice(mode_dim, p=probabilities))  # noqa: NPY002
+                levels.append(level)
+            chosen_levels[batch_index] = levels
+            states[(batch_index, slice(None), *levels)] = system_states_np[batch_index]
+
+        subsystem_dims = (self.system_dim, *self.boson_dims)
+        ensemble = TensorProductPureStatesEnsemble(
+            subsystem_dims,
+            batch_size=self.batch_size,
+            dtype=self.dtype,
+        )
+        ensemble.set_pse(states)
+        ensemble.normalize()
+        return ensemble, chosen_levels
 
     def set_system_bath_hamiltonians(self, hamiltonians: Sequence[Any]) -> None:
         if len(hamiltonians) != len(self.boson_dims):
@@ -667,11 +748,13 @@ class CoupledLindbladTrajectorySimulation:
                 self.thresholds = self._sample_thresholds()
         self.state = state
         return self.state
-    
+
     def normalize(self) -> None:
         """Normalize the state in place."""
         ## TODO: implement this
-        raise NotImplementedError("Normalization for coupled Lindblad trajectory simulation is not implemented yet.")
+        raise NotImplementedError(
+            "Normalization for coupled Lindblad trajectory simulation is not implemented yet."
+        )
 
     def reduced_system_density_matrix(self) -> Array:
         """Return ``rho_S`` with shape ``(batch, system_dim, system_dim)``."""

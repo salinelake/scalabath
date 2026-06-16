@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -10,11 +9,28 @@ import jax.numpy as jnp
 from jax import Array
 
 from scalabath.operators_base import boson, tight_binding_1d, tls
-from scalabath.utilities import compose, positive_int, nonnegative_int, complex_dtype
+from scalabath.utilities import complex_dtype, compose, nonnegative_int, positive_int
+
+
+def _as_batch_prefactor(prefactor: Any, batch_size: int, dtype: Any, name: str) -> Array:
+    values = jnp.asarray(prefactor, dtype=dtype)
+    if values.shape == ():
+        return jnp.broadcast_to(values, (batch_size,))
+    if values.shape == (batch_size,):
+        return values
+    raise ValueError(f"{name} shape must be scalar or ({batch_size},)")
+
+
+def _maybe_unbatch_operator(operator: Array, batch_size: int) -> Array:
+    if batch_size == 1:
+        return operator[0]
+    return operator
+
 
 ############################################################################################
 ###################### Basic classes for building many-body operators ######################
 ############################################################################################
+
 
 class OperatorGroup:
     """Base class for a static sum of operators on one subsystem.
@@ -52,20 +68,23 @@ class OperatorGroup:
 
         return len(self._descriptors)
 
-    def add_operator(self, descriptor: str, prefactor: Array) -> None:
-        """Add an operator (with a prefactor) to the group. Description of the operator is stored in self._descriptors. To be implemented in subclasses.
+    def add_operator(self, descriptor: str, prefactor: Any = 1.0) -> None:
+        """Add an operator to the group.
+
         Args:
-            descriptor: str, the descriptor of the operator to be added. Example: "XIII" denotes the operator :math:`\sigma_x \otimes identity \otimes identity \otimes identity` for a spin-1/2 system.
-            prefactor: Array, the prefactor of the operator of shape (self.batch_size,).
+            descriptor: Operator descriptor such as ``"XIII"``.
+            prefactor: Scalar or array of shape (self.batch_size,).
         """
         raise NotImplementedError("add_operator is not implemented in the base class")
 
     def sum_operators(self) -> Array:
         """Sum up the operators in the group. To be implemented in subclasses.
+
         Returns:
-            total_ops: Array, the total operator matrix of shape (self.hilbert_dim, self.hilbert_dim).
+            The total operator matrix.
         """
         raise NotImplementedError("sum_operators is not implemented in the base class")
+
 
 class BosonOperatorGroup(OperatorGroup):
     """Static operator group for a multi-mode bosonic subsystem."""
@@ -74,13 +93,14 @@ class BosonOperatorGroup(OperatorGroup):
         self,
         num_modes: int,
         id: str,
-        nmax: tuple[int, ...],
+        nmax: int | Sequence[int],
         *,
         batch_size: int = 1,
         dtype: Any = jnp.complex64,
     ) -> None:
         self.num_modes = positive_int(num_modes, "num_modes")
-        self.nmax = tuple(nonnegative_int(n, "n") for n in nmax)
+        nmax_values = (nmax,) if isinstance(nmax, int) else tuple(nmax)
+        self.nmax = tuple(nonnegative_int(n, "n") for n in nmax_values)
         if len(self.nmax) != self.num_modes:
             raise ValueError("nmax must have the same length as num_modes")
         self.local = []
@@ -90,29 +110,32 @@ class BosonOperatorGroup(OperatorGroup):
             hilbert_dim *= self.local[-1].dim
         super().__init__(id, hilbert_dim, batch_size=batch_size, dtype=dtype)
 
-    def add_operator(self, descriptor: str, prefactor: Array) -> None:
-        """Add a product operator described by a descriptor such as ``"UNI"``. This overrides the base class method.
+    def add_operator(self, descriptor: str, prefactor: Any = 1.0) -> None:
+        """Add a product operator described by a string such as ``"UNI"``.
+
         Args:
-            descriptor: str, the descriptor of the operator to be added. Example: "UDI" denotes the operator :math:`b^\dagger_0 \otimes b_1 \otimes I_2` for a boson system.
-            prefactor: Array, the prefactor of the operator of shape (self.batch_size,).
+            descriptor: One single-mode descriptor per bosonic mode.
+            prefactor: Scalar or array of shape (self.batch_size,).
         """
 
         if len(descriptor) != self.num_modes:
             raise ValueError("descriptor length must equal num_modes")
-        if prefactor.shape[0] != self.batch_size:
-            raise ValueError("prefactor shape must equal batch_size")
-        for idx,d in enumerate(descriptor):
+        prefactor = _as_batch_prefactor(prefactor, self.batch_size, self.dtype, "prefactor")
+        for idx, d in enumerate(descriptor):
             if d not in self.local[idx].descriptors_dict:
                 raise ValueError(f"unknown boson operator descriptor {d!r}")
         self._descriptors.append(descriptor)
         self._prefactors.append(prefactor)
         return
-    
+
     def add_harmonic_operators(self, omega: Array) -> None:
-        """Add harmonic energy terms :math:`\sum_i \omega_i b_i^\dagger b_i` to the group.
+        """Add harmonic energy terms to the group.
+
         Args:
-            omega: Array, the frequency of the harmonic oscillator of shape (self.num_modes,) or (self.batch_size, self.num_modes).
+            omega: Frequencies shaped ``(num_modes,)`` or
+                ``(batch_size, num_modes)``.
         """
+        omega = jnp.asarray(omega, dtype=self.dtype)
         if omega.shape[-1] != self.num_modes:
             raise ValueError("omega shape must equal (num_modes,) or (batch_size, num_modes)")
         if omega.ndim == 2:
@@ -129,15 +152,20 @@ class BosonOperatorGroup(OperatorGroup):
         return
 
     def sum_operators(self) -> Array:
-        """Sum up the operators in the group. This overrides the base class method.
+        """Sum up the operators in the group.
+
         Returns:
-            total_ops: Array, the total operator matrix of shape (self.batch_size, self.hilbert_dim, self.hilbert_dim).
+            A matrix, or batched matrices when ``batch_size > 1``.
         """
-        total_ops = jnp.zeros((self.batch_size, self.hilbert_dim, self.hilbert_dim), dtype=self.dtype)
-        for descriptor, prefactor in zip(self._descriptors, self._prefactors):
+        total_ops = jnp.zeros(
+            (self.batch_size, self.hilbert_dim, self.hilbert_dim),
+            dtype=self.dtype,
+        )
+        for descriptor, prefactor in zip(self._descriptors, self._prefactors, strict=True):
             ops = [self.local[idx].get_operator(d) for idx, d in enumerate(descriptor)]
             total_ops += compose(ops)[None, :, :] * prefactor[:, None, None]
-        return total_ops
+        return _maybe_unbatch_operator(total_ops, self.batch_size)
+
 
 class SpinOperatorGroup(OperatorGroup):
     """Static operator group for a tensor product of two-level systems."""
@@ -154,17 +182,17 @@ class SpinOperatorGroup(OperatorGroup):
         self.local = tls(dtype=dtype)
         super().__init__(id, 2**self.num_spins, batch_size=batch_size, dtype=dtype)
 
-    def add_operator(self, descriptor: str, prefactor: Array) -> None:
-        """Add a product operator described by a sequence such as ``"XIZ"``. This overrides the base class method.
+    def add_operator(self, descriptor: str, prefactor: Any = 1.0) -> None:
+        """Add a product operator described by a sequence such as ``"XIZ"``.
+
         Args:
-            descriptor: str, the descriptor of the operator to be added. Example: "XIZ" denotes the operator :math:`\sigma_x \otimes \sigma_z \otimes \sigma_z` for a spin-1/2 system.
-            prefactor: Array, the prefactor of the operator of shape (self.batch_size,).
+            descriptor: One two-level-system descriptor per spin.
+            prefactor: Scalar or array of shape (self.batch_size,).
         """
 
         if len(descriptor) != self.num_spins:
             raise ValueError("descriptor length must equal num_spins")
-        if prefactor.shape[0] != self.batch_size:
-            raise ValueError("prefactor shape must equal batch_size")
+        prefactor = _as_batch_prefactor(prefactor, self.batch_size, self.dtype, "prefactor")
         for d in descriptor:
             if d not in self.local.descriptors_dict:
                 raise ValueError(f"unknown spin operator descriptor {d!r}")
@@ -173,15 +201,20 @@ class SpinOperatorGroup(OperatorGroup):
         return
 
     def sum_operators(self) -> Array:
-        """Sum up the operators in the group. This overrides the base class method.
+        """Sum up the operators in the group.
+
         Returns:
-            total_ops: Array, the total operator matrix of shape (self.batch_size, self.hilbert_dim, self.hilbert_dim).
+            A matrix, or batched matrices when ``batch_size > 1``.
         """
-        total_ops = jnp.zeros((self.batch_size, self.hilbert_dim, self.hilbert_dim), dtype=self.dtype)
-        for descriptor, prefactor in zip(self._descriptors, self._prefactors):
+        total_ops = jnp.zeros(
+            (self.batch_size, self.hilbert_dim, self.hilbert_dim),
+            dtype=self.dtype,
+        )
+        for descriptor, prefactor in zip(self._descriptors, self._prefactors, strict=True):
             ops = [self.local.get_operator(d) for d in descriptor]
             total_ops += compose(ops)[None, :, :] * prefactor[:, None, None]
-        return total_ops
+        return _maybe_unbatch_operator(total_ops, self.batch_size)
+
 
 class TightBindingChainOperatorGroup(OperatorGroup):
     """Static operator group for a 1D single-particle tight-binding subsystem."""
@@ -199,12 +232,11 @@ class TightBindingChainOperatorGroup(OperatorGroup):
         self.local = tight_binding_1d(n_sites, periodic=periodic, dtype=dtype)
         super().__init__(id, self.local.hilbert_dim, batch_size=batch_size, dtype=dtype)
 
-    def add_operator(self, descriptor: str, prefactor: Array) -> None:
-        """Add a sequence-defined tight-binding operator such as ``"XRX"``. This overrides the base class method."""
+    def add_operator(self, descriptor: str, prefactor: Any = 1.0) -> None:
+        """Add a sequence-defined tight-binding operator such as ``"XRX"``."""
         if len(descriptor) != self.n_sites:
             raise ValueError("descriptor length must equal n_sites")
-        if prefactor.shape[0] != self.batch_size:
-            raise ValueError("prefactor shape must equal batch_size")
+        prefactor = _as_batch_prefactor(prefactor, self.batch_size, self.dtype, "prefactor")
         for d in descriptor:
             if d not in self.local.descriptors_dict:
                 raise ValueError(f"unknown tight-binding operator descriptor {d!r}")
@@ -213,12 +245,12 @@ class TightBindingChainOperatorGroup(OperatorGroup):
         return
 
     def add_hopping_operators(self, amplitude: Array) -> None:
-        """Add hopping operators :math:`\sum_i t (L_i + R_i)` to the group.
+        """Add nearest-neighbor hopping operators to the group.
+
         Args:
             amplitude: Array, the hopping amplitude of shape (self.batch_size,).
         """
-        if amplitude.shape[0] != self.batch_size:
-            raise ValueError("amplitude shape must equal batch_size")
+        amplitude = _as_batch_prefactor(amplitude, self.batch_size, self.dtype, "amplitude")
         for site in range(self.n_sites):
             descriptor = ["X"] * self.n_sites
             descriptor[site] = "L"
@@ -229,14 +261,14 @@ class TightBindingChainOperatorGroup(OperatorGroup):
             self._descriptors.append("".join(descriptor))
             self._prefactors.append(amplitude)
         return
-    
+
     def add_onsite_operators(self, amplitude: Array) -> None:
-        """Add onsite operators :math:`\sum_i t N_i` to the group.
+        """Add on-site number operators to the group.
+
         Args:
             amplitude: Array, the onsite amplitude of shape (self.batch_size,).
         """
-        if amplitude.shape[0] != self.batch_size:
-            raise ValueError("amplitude shape must equal batch_size")
+        amplitude = _as_batch_prefactor(amplitude, self.batch_size, self.dtype, "amplitude")
         for site in range(self.n_sites):
             descriptor = ["X"] * self.n_sites
             descriptor[site] = "N"
@@ -245,16 +277,22 @@ class TightBindingChainOperatorGroup(OperatorGroup):
         return
 
     def sum_operators(self) -> Array:
-        """Sum up the operators in the group. This overrides the base class method.
+        """Sum up the operators in the group.
+
         Returns:
-            total_ops: Array, the total operator matrix of shape (self.batch_size, self.hilbert_dim, self.hilbert_dim).
+            A matrix, or batched matrices when ``batch_size > 1``.
         """
-        total_ops = jnp.zeros((self.batch_size, self.hilbert_dim, self.hilbert_dim), dtype=self.dtype)
-        for descriptor, prefactor in zip(self._descriptors, self._prefactors):
+        total_ops = jnp.zeros(
+            (self.batch_size, self.hilbert_dim, self.hilbert_dim),
+            dtype=self.dtype,
+        )
+        for descriptor, prefactor in zip(self._descriptors, self._prefactors, strict=True):
             total_ops += self.local.get_operator(descriptor)[None, :, :] * prefactor[:, None, None]
-        return total_ops
+        return _maybe_unbatch_operator(total_ops, self.batch_size)
+
 
 ## TODO: Implement TightBindingSquareOperatorGroup
+
 
 class ComposedOperatorGroups(OperatorGroup):
     """Tensor product of subsystem operator groups.
@@ -292,13 +330,10 @@ class ComposedOperatorGroups(OperatorGroup):
         return compose(all_groups)
 
 
-
-
-
 __all__ = [
     "BosonOperatorGroup",
     "ComposedOperatorGroups",
     "OperatorGroup",
     "SpinOperatorGroup",
-    "TightBindingOperatorGroup",
+    "TightBindingChainOperatorGroup",
 ]

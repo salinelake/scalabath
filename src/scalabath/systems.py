@@ -115,8 +115,6 @@ class PureStatesEnsemble:
         self._pse = states / norms[:, None]
         return self._pse
 
-    
-
 
 class DensityMatrixEnsemble:
     """Container for a batch of flat density matrices.

@@ -41,8 +41,8 @@ def test_tls_pauli_matrices_and_spin_group_sum() -> None:
 def test_tight_binding_1d_sequence_conventions() -> None:
     local = tight_binding_1d(3, periodic=False)
 
-    right_from_middle = local.get_composite_ops("XRX")
-    left_from_edge = local.get_composite_ops("LXX")
+    right_from_middle = local.get_operator("XRX")
+    left_from_edge = local.get_operator("LXX")
 
     expected_right = np.zeros((3, 3), dtype=np.complex128)
     expected_right[2, 1] = 1
@@ -73,7 +73,7 @@ def test_operator_groups_compose_subsystems() -> None:
 
 
 def test_tight_binding_group_sums_static_terms() -> None:
-    group = TightBindingOperatorGroup(3, "tb", periodic=False)
+    group = TightBindingChainOperatorGroup(3, "tb", periodic=False)
     group.add_operator("XRX", prefactor=2.0)
     group.add_operator("XXN", prefactor=0.5)
 

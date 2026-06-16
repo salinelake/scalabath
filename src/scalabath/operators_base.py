@@ -1,15 +1,15 @@
-"""Basic operator matrices, including one-mode bosonic operators, two-level-system operators, and one-particle tight-binding operators."""
+"""Basic operator matrices for bosons, two-level systems, and tight-binding lattices."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import Any
-from warnings import warn
 
 import jax.numpy as jnp
 from jax import Array
 
-from scalabath.utilities import adjoint, compose, positive_int, nonnegative_int, complex_dtype
+from scalabath.utilities import adjoint, complex_dtype, nonnegative_int, positive_int
+
 
 class boson:
     """Single-mode bosonic operators with a finite occupation cutoff.
@@ -57,6 +57,7 @@ class boson:
         except KeyError as exc:
             raise ValueError(f"unknown boson operator descriptor {descriptor!r}") from exc
 
+
 class tls:
     """Two-level-system operators.
 
@@ -99,6 +100,7 @@ class tls:
         except KeyError as exc:
             raise ValueError(f"unknown two-level operator descriptor {descriptor!r}") from exc
 
+
 class tight_binding_1d:
     """Single-particle tight-binding operators on a 1D lattice.
 
@@ -119,18 +121,20 @@ class tight_binding_1d:
         if self.n_sites == 1:
             raise ValueError("n_sites can not be 1")
         if self.n_sites == 2:
-            raise ValueError("n_sites has to be greater than 2. Use tls instead of you only need a two-level-system.")
+            raise ValueError(
+                "n_sites has to be greater than 2. Use tls instead if you only need "
+                "a two-level-system."
+            )
         self.periodic = bool(periodic)
         self.dtype = complex_dtype(dtype)
         self.hilbert_dim = self.n_sites
         self.identity = jnp.eye(self.hilbert_dim, dtype=self.dtype)
         self.descriptors_dict = {
-            "X": None,  
+            "X": None,
             "N": None,
             "L": None,
             "R": None,
         }
-
 
     def _validate_site(self, site: int) -> int:
         site = int(site)
@@ -199,7 +203,7 @@ class tight_binding_1d:
         return total
 
     def get_operator(self, descriptor: str) -> Array:
-        """Return a sequence-defined one-particle tight-binding operator. Note that this function does not construct a many-body operator. 
+        """Return a sequence-defined one-particle tight-binding operator.
 
         ``"X"`` denotes identity on a site, ``"N"`` an on-site projector,
         ``"L"`` a hop from the marked site to the left, and ``"R"`` a hop from
@@ -247,9 +251,10 @@ class tight_binding_2d:
         self.nx = positive_int(nx, "nx")
         self.ny = positive_int(ny, "ny")
         if self.nx == 1 or self.ny == 1:
-            raise ValueError("nx and ny have to be greater than 1. Use tight_binding_1d instead if you only need a 1D lattice.")
-        if self.nx == 2 or self.ny == 2:
-            warn("nx or ny are 2. Do not use `nearest_neighbor_hopping` to construct the Hamiltonian because it will double count the hopping. Use `hopping` to construct the Hamiltonian one term by one term instead.")
+            raise ValueError(
+                "nx and ny have to be greater than 1. Use tight_binding_1d instead "
+                "if you only need a 1D lattice."
+            )
         self.periodic = bool(periodic)
         self.dtype = complex_dtype(dtype)
         self.hilbert_dim = self.nx * self.ny
@@ -321,7 +326,7 @@ class tight_binding_2d:
         return total
 
     def get_operator(self, descriptor_sequence: str) -> Array:
-        """Return a sequence-defined one-particle tight-binding operator. Note that this function does not construct a many-body operator. 
+        """Return a sequence-defined one-particle tight-binding operator.
 
         ``"X"`` denotes identity on a site, ``"N"`` an on-site projector,
         ``"L"`` a hop from the marked site to the left, and ``"R"`` a hop from
@@ -329,8 +334,6 @@ class tight_binding_2d:
         non-``"X"`` character.
         """
         raise NotImplementedError("get_operator has not been implemented for tight_binding_2d")
-
-
 
 
 __all__ = ["boson", "tight_binding_1d", "tight_binding_2d", "tls"]
