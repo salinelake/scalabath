@@ -88,12 +88,13 @@ def plot_population(input_path, output_path):
         time_fs = np.asarray(data["time_fs"], dtype=float)
         site_populations = np.asarray(data["site_populations"], dtype=float)
     site_populations = site_populations.mean(axis=-2) # shape: (time, chain_length)
+    ntime = site_populations.shape[0]
     fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(site_populations[10], linewidth=2.0)
-    ax.plot(site_populations[30], linewidth=2.0)
-    ax.plot(site_populations[50], linewidth=2.0)
-    ax.plot(site_populations[70], linewidth=2.0)
-    ax.plot(site_populations[90], linewidth=2.0)
+    ax.plot(site_populations[0]**0.5, linewidth=2.0, label="t=0 fs")
+    ax.plot(site_populations[ntime//4]**0.5, linewidth=2.0, label=f"t={ntime//4} fs")
+    ax.plot(site_populations[ntime//2]**0.5, linewidth=2.0, label=f"t={ntime//2} fs")
+    ax.plot(site_populations[3*ntime//4]**0.5, linewidth=2.0, label=f"t={3*ntime//4} fs")
+    ax.plot(site_populations[ntime-1]**0.5, linewidth=2.0, label=f"t={ntime-1} fs")
 
     ax.set_xlabel("Site")
     ax.set_ylabel("Population")
@@ -107,7 +108,7 @@ if __name__ == "__main__":
     # temp_list = np.array([200, 250, 300, 350, 400])
     temp_list = np.array([200, 300, 400])
     L = 150
-    nrun = 16
+    nrun = 32
     batch = 5
     slope_list = np.zeros(len(temp_list))
     data_folder = f"data_L{L}_300fs"

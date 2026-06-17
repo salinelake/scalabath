@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
-
+from time import time as get_time
 import numpy as np
 from helpers import *
 
@@ -97,6 +97,7 @@ def main() -> None:
     print(f"number of steps: {nsteps}, observing every {sample_freq} step(s)")
     steps_done = 0
     while steps_done < nsteps:
+        time_start = get_time()
         steps_this_sample = min(sample_freq, nsteps - steps_done)
         simulation.step(n_steps=steps_this_sample)
         simulation.normalize()
@@ -106,6 +107,8 @@ def main() -> None:
         populations = site_populations_from_state(simulation.state)
         center_population = populations[:, center_site].mean()
         print(f"t={t_fs:.3f}fs, center_population_mean={center_population:.6f}")
+        print(f"time taken: {get_time() - time_start:.3f}s")
+        print(f"projected wall time: {(nsteps//sample_freq) * (get_time() - time_start) / 3600:.3f}h")
         time_fs.append(t_fs)
         site_populations.append(populations)
     
