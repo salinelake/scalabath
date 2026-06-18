@@ -158,6 +158,8 @@ $$
 =g^{\dagger}e^{(-ih-\Gamma)t}g\delta_{jj^{\prime}}.
 $$
 
+In practice, we will use diagonal dissipation. So $\Gamma$ is a diagonal matrix.
+
 ## Example: Carrier transport in Rubrene crystal
 
 The Rubrene example in `examples/rubrene` simulates carrier transport in a
@@ -209,4 +211,32 @@ JAX_ENABLE_X64=1 python 01.main.py \
 ```
 
 
-## Example: Exciton transport in bio-complex
+## Example: Exciton transport in bio-complex BCHL chain
+
+The BCHL chain example in `examples/BCHL_chain` simulates exciton transport in a one-dimensional BCHL chain. The system is a n-site tight-binding chain coupled to an effective bosonic bath. For BCHL, n=19. The number of bosonic modes is denoted by N. 
+
+The bath Hamiltonian is not diagonal and is given by:
+$$
+\hat{H}_{B}=\sum_{k,k^{\prime}}h_{kk^{\prime}}
+\hat{b}_{k}^{\dagger}\hat{b}_{k^{\prime}},
+$$
+
+The system-bath coupling is given by the same form as the Rubrene example, but the coupling strengths and phases are different.
+$$
+\hat{H}_{SB}=\sum_{j=1}^{n}\sum_{k=1}^{N}|j\rangle\langle j|\otimes
+(g_{k}e^{i\phi_{j}}\hat{b}_{k}
++g_{k}^{*}e^{-i\phi_{j}^{*}}\hat{b}_{k}^{\dagger}).
+$$
+
+The evolution of the density matrix is given by:
+$$
+\partial_{t}\hat{\rho}
+&= -i[\hat{H}_{S}+\hat{H}_{B}+\hat{H}_{SB},\hat{\rho}] \\
+&\quad + \sum_{k}\gamma_{k}
+\left(\hat{b}_{k}\hat{\rho}\hat{b}_{k}^{\dagger}
+-0.5\{\hat{b}_{k}^{\dagger}\hat{b}_{k},\hat{\rho}\}\right).
+$$
+ 
+The matrix $h_{kk^{\prime}}$, the coupling strengths $g_{k}$, and the damping rates $\gamma_{k}$ are read from `parameters.json`.
+
+The initial state of the system is a product state. The initial state of the bath is the thermal state at temperature T. The initial state of the system is the center site of the chain.

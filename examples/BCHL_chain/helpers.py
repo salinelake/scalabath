@@ -7,23 +7,21 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-def save_metadata(args, boson_dims: np.ndarray, center_site: int, omega_cm: np.ndarray, output_path: Path) -> Path:
+def site_populations(density_matrices: jnp.ndarray, batch_size, chain_length, bath_dim) -> jnp.ndarray:
+    diagonal = jnp.diagonal(density_matrices, axis1=-2, axis2=-1).real
+    diagonal = diagonal.reshape(batch_size, chain_length, bath_dim)
+    return diagonal.sum(axis=-1)
+
+def save_metadata(args, boson_dims: np.ndarray, center_site: int, gamma: np.ndarray, output_path: Path) -> Path:
     metadata = {
         "batch_size": args.batch_size,
         "boson_dims": boson_dims.tolist(),
         "center_site": center_site,
-        "chain_length": args.chain_length,
         "dtype": args.dtype,
         "dt_fs": args.dt_fs,
-        "gamma_cm_inverse": gamma_cm.tolist(),
-        "hopping_cm_inverse": args.hopping_cm_inverse,
-        "huang_rhys": huang_rhys.tolist(),
-        "num_modes": args.num_modes,
-        "periodic": args.periodic,
+        "gamma_cm_inverse": gamma.tolist(),
         "run_id": args.run_id,
         "sample_period_fs": args.sample_period_fs,
         "sample_time_fs": args.sample_time_fs,
-        "seed": args.seed,
-        "omega_cm_inverse": omega_cm.tolist(),
     }
     output_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")

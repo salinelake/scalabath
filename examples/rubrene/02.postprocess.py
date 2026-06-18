@@ -7,6 +7,12 @@ from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib as mpl
+mpl.rcParams['axes.linewidth'] = 2
+mpl.rcParams['xtick.labelsize'] = 12
+mpl.rcParams['ytick.labelsize'] = 12
+mpl.rcParams['lines.markersize'] = 6
+mpl.rcParams['lines.linewidth'] = 2
 
 from scalabath.constants import Constants
 
@@ -107,18 +113,18 @@ if __name__ == "__main__":
     ## simulation parameters
     # temp_list = np.array([200, 250, 300, 350, 400])
     temp_list = np.array([200, 300, 400])
-    L = 150
     nrun = 32
-    batch = 5
     slope_list = np.zeros(len(temp_list))
-    data_folder = f"data_L{L}_300fs"
 
     ## plot comparison
     fig, ax = plt.subplots(2,1, figsize=(7, 8))
     for idx, T in enumerate(temp_list):
         msd_batch = []
         for run_id in range(nrun):
-            input_path = f'{data_folder}/T{T}_batch{batch}_run{run_id}.npz'
+            if T == 200:
+                input_path = f'data_L200_450fs/T{T}_batch3_run{run_id}.npz'
+            else:
+                input_path = f'data_L150_300fs/T{T}_batch5_run{run_id}.npz'
             ## load metadata
             metadata_path = input_path.replace(".npz", ".json")
             with open(metadata_path, "r") as f:
@@ -150,25 +156,31 @@ if __name__ == "__main__":
     ax[1].legend()
     ax[0].grid(True)
     ax[1].grid(True)
-    fig.savefig("L150_msd.png", dpi=200)
+    fig.savefig("msd_comparison.png", dpi=200)
     plt.close(fig)
 
     ## load mobility reference data
     mobility_ref = np.loadtxt("mobility.csv", delimiter=',')
     ref_temp = mobility_ref[:, 0]
-    ref_dmrg = (mobility_ref[:, 1] + mobility_ref[:, 2])/2
-    ref_fgr = (mobility_ref[:, 3] + mobility_ref[:, 4])/2
+    ref_dmrg = mobility_ref[:, 1] 
+    ref_fgr = mobility_ref[:, 2]
+    ref_diqcd = mobility_ref[:, 3]
+    ref_ehrenfest = mobility_ref[:, 4]
+
 
     ## calculate mobility
     rubrene_R = 7.19 * Constants.Angstrom
     factor = rubrene_R ** 2/ Constants.cm**2 * Constants.eV / Constants.kb / temp_list / 2.0 * Constants.s / Constants.fs
     mobility = slope_list * factor
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(temp_list, mobility, linewidth=2.0, label='This work', marker='o')
-    ax.plot(ref_temp, ref_dmrg, linewidth=2.0, label="DMRG")
-    ax.plot(ref_temp, ref_fgr, linewidth=2.0, label="FGR")
+    fig, ax = plt.subplots(figsize=(4, 4))
+    ax.plot(ref_temp, ref_dmrg, 'o-', label="DMRG")
+    # ax.plot(ref_temp, ref_fgr, 'o-', label="FGR")
+    ax.plot(ref_temp, ref_diqcd, 'o-', label="DIQCD")
+    ax.plot(ref_temp, ref_ehrenfest, 'o-', label="Ehrenfest")
+    ax.plot(temp_list, mobility, '*-', label='This work', markersize=10)
+    ax.plot(300, 40, marker='v', markersize=7, linewidth=0,color='blue', label='EXP')
     ax.legend()
     ax.set_xlabel("Temperature (K)")
     ax.set_ylabel("Mobility (cm$^2$/V/s)")
-    fig.savefig("L150_mobility.png", dpi=200)
+    fig.savefig("mobility_comparison.png", dpi=200)
     plt.close(fig)
