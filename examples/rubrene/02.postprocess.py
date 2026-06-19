@@ -111,8 +111,8 @@ def plot_population(input_path, output_path):
 if __name__ == "__main__":
 
     ## simulation parameters
-    # temp_list = np.array([200, 250, 300, 350, 400])
-    temp_list = np.array([200, 300, 400])
+    temp_list = np.array([200, 250, 300, 350, 400])
+    # temp_list = np.array([200, 300, 400])
     nrun = 32
     slope_list = np.zeros(len(temp_list))
 
@@ -121,10 +121,7 @@ if __name__ == "__main__":
     for idx, T in enumerate(temp_list):
         msd_batch = []
         for run_id in range(nrun):
-            if T == 200:
-                input_path = f'data_L200_450fs/T{T}_batch3_run{run_id}.npz'
-            else:
-                input_path = f'data_L150_300fs/T{T}_batch5_run{run_id}.npz'
+            input_path = f'data_L200_450fs/T{T}_batch3_run{run_id}.npz'
             ## load metadata
             metadata_path = input_path.replace(".npz", ".json")
             with open(metadata_path, "r") as f:
