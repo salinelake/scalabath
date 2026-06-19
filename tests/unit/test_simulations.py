@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 import numpy as np
@@ -129,3 +130,81 @@ def test_coupled_lindblad_trajectory_accepts_local_bath_hamiltonians() -> None:
     state = simulation.step()
 
     assert state.shape == (1, 2, 2)
+
+
+def test_coupled_lindblad_trajectory_accepts_full_bath_hamiltonian() -> None:
+    initial = jnp.zeros((1, 2, 2, 2), dtype=jnp.complex128).at[0, 0, 1, 0].set(1)
+    system_hamiltonian = jnp.asarray([[0.0, 0.2], [0.2, 0.0]], dtype=jnp.complex128)
+    bath_hamiltonian = jnp.asarray(
+        [
+            [0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.1 - 0.03j, 0.04, 0.0],
+            [0.0, 0.04, 0.3 - 0.05j, 0.0],
+            [0.0, 0.0, 0.0, 0.4 - 0.08j],
+        ],
+        dtype=jnp.complex128,
+    )
+    coupling = compose(
+        [
+            jnp.asarray([[1.0, 0.0], [0.0, 0.0]], dtype=jnp.complex128),
+            jnp.asarray([[0.0, 1.0], [1.0, 0.0]], dtype=jnp.complex128),
+        ]
+    )
+    simulation = CoupledLindbladTrajectorySimulation(
+        2,
+        (2, 2),
+        0.03,
+        system_hamiltonian=system_hamiltonian,
+        bath_hamiltonian=bath_hamiltonian,
+        system_bath_hamiltonians=[coupling, jnp.zeros_like(coupling)],
+        dtype=jnp.complex128,
+    )
+    simulation.state = initial
+    simulation.thresholds = jnp.asarray([-1.0], dtype=jnp.float32)
+
+    state = simulation.step()
+
+    u_s = jsp.linalg.expm(-1j * 0.03 * system_hamiltonian)
+    u_b = jsp.linalg.expm(-1j * 0.03 * bath_hamiltonian)
+    u_sb = jsp.linalg.expm(-1j * 0.03 * compose([coupling, jnp.eye(2, dtype=jnp.complex128)]))
+    dense_step = (
+        u_sb
+        @ compose([jnp.eye(2, dtype=jnp.complex128), u_b])
+        @ compose([u_s, jnp.eye(4, dtype=jnp.complex128)])
+    )
+    expected = (dense_step @ initial.reshape(-1)).reshape(1, 2, 2, 2)
+
+    np.testing.assert_allclose(np.asarray(state), np.asarray(expected), atol=1e-12)
+
+
+def test_coupled_lindblad_trajectory_resamples_only_jumped_threshold() -> None:
+    initial = jnp.zeros((2, 2, 2), dtype=jnp.complex128)
+    initial = initial.at[0, 0, 1].set(1)
+    initial = initial.at[1, 1, 0].set(1)
+    simulation = CoupledLindbladTrajectorySimulation(
+        2,
+        (2,),
+        0.01,
+        batch_size=2,
+        key=jax.random.PRNGKey(123),
+        dtype=jnp.complex128,
+    )
+    simulation.state = initial
+    simulation.thresholds = jnp.asarray([2.0, -1.0], dtype=jnp.float32)
+
+    state = simulation.step()
+
+    np.testing.assert_allclose(np.asarray(state[0, 0]), np.asarray([1.0, 0.0]), atol=1e-12)
+    np.testing.assert_allclose(np.asarray(state[1, 1]), np.asarray([1.0, 0.0]), atol=1e-12)
+    assert 0.0 <= float(simulation.thresholds[0]) < 1.0
+    np.testing.assert_allclose(np.asarray(simulation.thresholds[1]), np.asarray(-1.0))
+
+
+def test_coupled_lindblad_trajectory_normalizes_tensor_state() -> None:
+    simulation = CoupledLindbladTrajectorySimulation(2, (2,), 0.01, dtype=jnp.complex128)
+    simulation.state = jnp.zeros((1, 2, 2), dtype=jnp.complex128).at[0, 1, 1].set(2.0)
+
+    simulation.normalize()
+
+    norm = jnp.linalg.norm(simulation.state.reshape(1, -1), axis=1)
+    np.testing.assert_allclose(np.asarray(norm), [1.0])

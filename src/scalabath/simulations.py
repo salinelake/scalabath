@@ -20,7 +20,7 @@ from scalabath.systems import (
     PureStatesEnsemble,
     TensorProductPureStatesEnsemble,
 )
-from scalabath.utilities import adjoint, positive_int, ABAd
+from scalabath.utilities import ABAd, adjoint, positive_int
 
 
 def _prod(values: Sequence[int]) -> int:
@@ -85,7 +85,9 @@ def _dense_lindblad_euler_step(
     dt: Array,
 ) -> Array:
     """
-    Solve the Lindblad equation for a single time step using a naive first-order Euler method. Should not be used for long time evolution.
+    Solve one Lindblad step with naive first-order Euler integration.
+
+    This method should not be used for long-time evolution.
     Args:
         density_matrices: Density matrices with shape (batch, hilbert_dim, hilbert_dim).
         hamiltonian: Hamiltonian with shape (batch, hilbert_dim, hilbert_dim).
@@ -109,6 +111,7 @@ def _dense_lindblad_euler_step(
     dissipative = jax.vmap(one_jump)(jump_operators).sum(axis=0)
     return density_matrices + dt * (coherent + dissipative)
 
+
 @jax.jit
 def _dense_lindblad_step(
     density_matrices: Array,
@@ -117,7 +120,9 @@ def _dense_lindblad_step(
     dt: Array,
 ) -> Array:
     """
-    Solve the Lindblad equation for a single time step using a structure preserving integrator. Positivity is preserved by construction. But trace is not conserved.
+    Solve one Lindblad step with a structure-preserving integrator.
+
+    Positivity is preserved by construction. Trace is not exactly conserved.
     Args:
         density_matrices: Density matrices with shape (batch, hilbert_dim, hilbert_dim).
         hamiltonian: Hamiltonian with shape (batch, hilbert_dim, hilbert_dim).
@@ -130,13 +135,14 @@ def _dense_lindblad_step(
     ham_eff = hamiltonian * 1.0
     for jump_operator in jump_operators:
         ham_eff = ham_eff - 1j * 0.5 * adjoint(jump_operator) @ jump_operator
-    ## first step: rho -> (1-i*dt*H_eff)rho(1+i*dt*H_eff)   
+    ## first step: rho -> (1-i*dt*H_eff)rho(1+i*dt*H_eff)
     identity = jnp.eye(density_matrices.shape[-1], dtype=density_matrices.dtype)
     rho = ABAd(identity[None, :, :] - 1j * dt * ham_eff, density_matrices)
     ## second step: rho -> rho + dt * \sum_k L_k \rho L_k^\dagger
     for jump_operator in jump_operators:
         rho += dt * ABAd(jump_operator, rho)
     return rho
+
 
 @jax.jit
 def _batch_expectation_pure_dense(states: Array, operator: Array) -> Array:
@@ -184,6 +190,14 @@ def _apply_system_mode_operator(state: Array, operator: Array, mode_index: int) 
     else:
         out = operator @ mat
     return jnp.moveaxis(out.reshape(moved.shape), 2, mode_axis)
+
+
+def _apply_bath_operator(state: Array, operator: Array) -> Array:
+    batch_size, system_dim = state.shape[:2]
+    bath_dim = _prod(state.shape[2:])
+    matrix = state.reshape(batch_size, system_dim, bath_dim)
+    out = matrix @ jnp.swapaxes(operator, -1, -2)
+    return out.reshape(state.shape)
 
 
 @jax.jit
@@ -237,6 +251,20 @@ def _system_bath_deterministic_trajectory_step(
     state = _apply_axis_operator(state, system_full, 1)
     for mode_index, operator in enumerate(bath_full_by_mode):
         state = _apply_axis_operator(state, operator, mode_index + 2)
+    for mode_index, operator in enumerate(system_bath_full):
+        state = _apply_system_mode_operator(state, operator, mode_index)
+    return state
+
+
+@jax.jit
+def _system_bath_deterministic_trajectory_step_with_full_bath(
+    state: Array,
+    system_full: Array,
+    bath_full: Array,
+    system_bath_full: tuple[Array, ...],
+) -> Array:
+    state = _apply_axis_operator(state, system_full, 1)
+    state = _apply_bath_operator(state, bath_full)
     for mode_index, operator in enumerate(system_bath_full):
         state = _apply_system_mode_operator(state, operator, mode_index)
     return state
@@ -303,7 +331,7 @@ class UnitarySimulation:
         for _ in range(n_steps):
             self.state = _apply_dense_evolution_operator(self.state, self._evo_exact)
         return self.state
-        
+
     def normalize(self) -> None:
         """Normalize the state in place."""
         self.state = _normalize_state(self.state)
@@ -408,6 +436,7 @@ class LindbladSimulation:
                 self.dt,
             )
         return self.density_matrices
+
     def normalize(self) -> None:
         """Normalize the state in place."""
         self.density_matrices = _normalize_density_matrix(self.density_matrices)
@@ -658,12 +687,16 @@ class SystemBathUnitarySimulation:
 
 
 class CoupledLindbladTrajectorySimulation:
-    """Tensorized quantum-trajectory evolution for coupled Lindbladian baths.
+    """Stochastic Schrödinger evolution for a system coupled to bosonic modes.
 
-    This class follows the structure of the scratch coupled-Lindbladian code:
-    apply non-Hermitian local propagators to a pure state tensor, compare the
-    resulting norm with a per-trajectory random threshold, and apply one bath
-    jump operator when the threshold is crossed.
+    After averaging, the reduced system density matrix is equivalent to the
+    Lindblad master-equation evolution.
+
+    The simulation steps are:
+    1. Apply non-Hermitian local propagators to a pure state tensor.
+    2. Compare the resulting norm with a per-trajectory random threshold.
+    3. Apply one bath jump operator when the threshold is crossed.
+    4. Repeat the above steps for a given number of steps.
     """
 
     def __init__(
@@ -675,12 +708,15 @@ class CoupledLindbladTrajectorySimulation:
         boson_freqs: Sequence[float] | None = None,
         batch_size: int = 1,
         system_hamiltonian: Any | None = None,
+        bath_hamiltonian: Any | None = None,
         bath_hamiltonians: Sequence[Any] | None = None,
         system_bath_hamiltonians: Sequence[Any] | None = None,
         jump_operators: Sequence[Any] | None = None,
         key: Array | None = None,
         dtype: Any = jnp.complex64,
     ) -> None:
+        if bath_hamiltonian is not None and bath_hamiltonians is not None:
+            raise ValueError("provide either bath_hamiltonian or bath_hamiltonians, not both")
         ## initialize the unitary part. Sanity check is done inside.
         self.unitary_part = SystemBathUnitarySimulation(
             system_dim,
@@ -689,18 +725,31 @@ class CoupledLindbladTrajectorySimulation:
             boson_freqs=boson_freqs,
             batch_size=batch_size,
             system_hamiltonian=system_hamiltonian,
-            bath_hamiltonians=bath_hamiltonians,
+            bath_hamiltonians=bath_hamiltonians if bath_hamiltonian is None else None,
             system_bath_hamiltonians=system_bath_hamiltonians,
             dtype=dtype,
         )
-        ## 
+        ##
         self.dtype = self.unitary_part.dtype
         self.system_dim = self.unitary_part.system_dim
         self.boson_dims = self.unitary_part.boson_dims
         self.nmodes = self.unitary_part.nmodes
         self.boson_freqs = self.unitary_part.boson_freqs
+        self.bath_dim = self.unitary_part.bath_dim
         self.batch_size = self.unitary_part.batch_size
         self.dt = self.unitary_part.dt
+        if bath_hamiltonian is None:
+            self.bath_hamiltonian = None
+            self._bath_full = None
+        else:
+            self.bath_hamiltonian = _as_local_matrix(
+                bath_hamiltonian,
+                self.bath_dim,
+                self.batch_size,
+                self.dtype,
+                "bath_hamiltonian",
+            )
+            self._bath_full = None
         self.key = jax.random.PRNGKey(0) if key is None else key
         self.thresholds = self._sample_thresholds()
         if jump_operators is None:
@@ -712,6 +761,12 @@ class CoupledLindbladTrajectorySimulation:
                 _as_local_matrix(matrix, dim, self.batch_size, self.dtype, "jump_operator")
                 for matrix, dim in zip(jump_operators, self.boson_dims, strict=True)
             )
+
+    def _prepare_trajectory_propagators(self) -> None:
+        if not self.unitary_part._propagators_ready:
+            self.unitary_part._prepare_propagators()
+        if self.bath_hamiltonian is not None and self._bath_full is None:
+            self._bath_full = _matrix_exponential(self.bath_hamiltonian, -1j * self.dt)
 
     @property
     def state(self) -> Array:
@@ -758,37 +813,40 @@ class CoupledLindbladTrajectorySimulation:
         jumped = jumped_states[channel]
         jumped_norm = jnp.linalg.norm(jumped.reshape(-1))
         jumped = jumped / jnp.maximum(jumped_norm, jnp.asarray(1e-30, dtype=jumped_norm.dtype))
+        self.key, subkey = jax.random.split(self.key)
+        new_threshold = jax.random.uniform(subkey, (), dtype=self.thresholds.dtype)
+        self.thresholds = self.thresholds.at[batch_index].set(new_threshold)
         return state.at[batch_index].set(jumped), True
 
     def step(self, n_steps: int = 1) -> Array:
         """Advance by ``n_steps`` non-Hermitian trajectory steps."""
 
         n_steps = positive_int(n_steps, "n_steps")
-        if not self.unitary_part._propagators_ready:
-            self.unitary_part._prepare_propagators()
+        self._prepare_trajectory_propagators()
         state = self.state
         for _ in range(n_steps):
-            state = _system_bath_deterministic_trajectory_step(
-                state,
-                self.unitary_part._matrix_system_full,
-                self.unitary_part._matrix_bath_full_by_mode,
-                self.unitary_part._system_bath_full,
-            )
-            jumped_any = False
+            if self.bath_hamiltonian is None:
+                state = _system_bath_deterministic_trajectory_step(
+                    state,
+                    self.unitary_part._matrix_system_full,
+                    self.unitary_part._matrix_bath_full_by_mode,
+                    self.unitary_part._system_bath_full,
+                )
+            else:
+                state = _system_bath_deterministic_trajectory_step_with_full_bath(
+                    state,
+                    self.unitary_part._matrix_system_full,
+                    self._bath_full,
+                    self.unitary_part._system_bath_full,
+                )
             for batch_index in range(self.batch_size):
-                state, jumped = self._apply_jump_single_batch(state, batch_index)
-                jumped_any = jumped_any or jumped
-            if jumped_any:
-                self.thresholds = self._sample_thresholds()
+                state, _ = self._apply_jump_single_batch(state, batch_index)
         self.state = state
         return self.state
 
     def normalize(self) -> None:
         """Normalize the state in place."""
-        ## TODO: implement this
-        raise NotImplementedError(
-            "Normalization for coupled Lindblad trajectory simulation is not implemented yet."
-        )
+        self.unitary_part.normalize()
 
     def reduced_system_density_matrix(self) -> Array:
         """Return ``rho_S`` with shape ``(batch, system_dim, system_dim)``."""
