@@ -308,22 +308,23 @@ class tight_binding_2d:
     
     def nearest_neighbor_hopping(self, amplitude: tuple[complex, complex] = (1.0, 1.0)) -> Array:
         """Return Hermitian nearest-neighbor hopping on the 2D lattice."""
-
+        if self.nx == 2 or self.ny == 2:
+            raise ValueError("nearest_neighbor_hopping will double-count hopping amplitudes for 2x2 lattices")
         total = jnp.zeros((self.hilbert_dim, self.hilbert_dim), dtype=self.dtype)
         directions = ((1, 0), (0, 1))
         for x in range(self.nx):
             for y in range(self.ny):
                 for direction, amp in zip(directions, amplitude):
                     dx, dy = direction
-                    nx = x + dx
-                    ny = y + dy
+                    nn_x = x + dx
+                    nn_y = y + dy
                     if self.periodic:
-                        nx %= self.nx
-                        ny %= self.ny
-                    elif nx >= self.nx or ny >= self.ny:
+                        nn_x %= self.nx
+                        nn_y %= self.ny
+                    elif nn_x >= self.nx or nn_y >= self.ny:
                         continue
-                    total = total + self.hopping((x, y), (nx, ny), amp)
-                    total = total + self.hopping((nx, ny), (x, y), jnp.conjugate(amp))
+                    total = total + self.hopping((x, y), (nn_x, nn_y), amp)
+                    total = total + self.hopping((nn_x, nn_y), (x, y), jnp.conjugate(amp))
         return total
 
     def get_operator(self, descriptor_sequence: str) -> Array:
