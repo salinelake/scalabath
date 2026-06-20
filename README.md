@@ -60,9 +60,12 @@ python -m pip install -e .
   tight-binding operator matrices.
 - `src/scalabath/operators_groups.py`: static sums of many-body operators and
   tensor products of subsystem operator groups.
-- `src/scalabath/simulations.py`: dense unitary evolution, dense Lindblad
-  evolution, tensorized system-bath unitary evolution, and coupled Lindblad
-  trajectory evolution.
+- `src/scalabath/simulations_unitary.py`: dense unitary evolution and
+  tensorized system-bath unitary evolution.
+- `src/scalabath/simulations_lindblad.py`: dense Lindblad evolution and
+  coupled Lindblad trajectory evolution.
+- `src/scalabath/simulations.py`: compatibility re-exports for the simulation
+  classes.
 - `src/scalabath/utilities.py`: shared linear algebra helpers such as adjoints,
   Kronecker products, traces, and expectation values.
 - `src/scalabath/constants.py`: physical constants and unit conversions used by

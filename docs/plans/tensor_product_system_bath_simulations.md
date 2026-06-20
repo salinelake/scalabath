@@ -39,3 +39,8 @@ The tensor-product path avoids materializing full system-bath operators during
 time stepping. It still accepts matrices produced by the existing operator
 builders when those matrices are local to the system, a mode, or a system-mode
 pair.
+
+When a state `NamedSharding` is provided, prepared propagators should be placed
+on the same mesh with replicated sharding. This keeps the tensor-product step
+kernel from receiving single-device propagator inputs while preserving the
+state sharding over the system axis.

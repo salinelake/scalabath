@@ -12,18 +12,15 @@ from scalabath.operators_base import tight_binding_1d
 from scalabath.simulations_unitary import SystemBathUnitarySimulation
 
 DEFAULT_BOSON_DIMS = np.asarray([12, 6, 4, 3, 3, 4, 3, 3, 4], dtype=int)
-DTYPES = {
-    "complex64": jnp.complex64,
-    "complex128": jnp.complex128,
-}
+DTYPES = { "complex64": jnp.complex64, "complex128": jnp.complex128 }
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a tensor-product Rubrene tight-binding chain bath simulation.")
     parser.add_argument("--temperature", type=float, default=300.0, help="bath temperature in K")
-    parser.add_argument("--chain-length", type=int, default=150, help="number of tight-binding sites")
+    parser.add_argument("--chain-length", type=int, default=200, help="number of tight-binding sites")
     parser.add_argument("--hopping-mev", type=float, default=83.0, help="nearest-neighbor hopping amplitude in meV")
     parser.add_argument("--dt-fs", type=float, default=0.1, help="time step in fs")
-    parser.add_argument("--sample-time-fs", type=float, default=300.0, help="total time in fs")
+    parser.add_argument("--sample-time-fs", type=float, default=450.0, help="total time in fs")
     parser.add_argument("--sample-period-fs", type=float, default=1.0, help="save period in fs")
     parser.add_argument("--batch-size", type=int, default=5, help="number of random trajectories")
     parser.add_argument("--run-id", type=int, default=0, help="run id used in the output filename")
@@ -31,7 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--boson-dims", default=None, help="comma-separated local boson dimensions, e.g. 9,4,2,2,2,2,2,2,2")
     parser.add_argument("--coupling-csv", type=Path, default="coupling_const.csv", help="CSV with columns omega_cm_inverse, lambda_cm_inverse")
     parser.add_argument("--periodic", type=bool, default=False, help="use periodic boundary conditions for the tight-binding chain")
-    parser.add_argument("--dtype", choices=tuple[str, ...](DTYPES), default="complex128", help="complex dtype for JAX arrays")
+    parser.add_argument("--dtype", choices=tuple[str, ...](DTYPES), default="complex64", help="complex dtype for JAX arrays")
     return parser.parse_args()
 
 def main() -> None:
@@ -66,6 +63,9 @@ def main() -> None:
         batch_size=args.batch_size,
         dtype=dtype,
     )
+    # state_sharding = state_sharding_from_gpus(len(boson_dims))
+    # if state_sharding is not None:
+    #     simulation._pse.sharding = state_sharding
     ## set the system Hamiltonian
     tb_chain = tight_binding_1d(args.chain_length, periodic=args.periodic, dtype=dtype)
     system_hamiltonian = tb_chain.nearest_neighbor_hopping(hopping)  # 2D array shape: (chain_length, chain_length)

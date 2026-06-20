@@ -11,7 +11,7 @@ from helpers import save_metadata, site_populations
 
 from scalabath.constants import Constants
 from scalabath.operators_base import boson, tight_binding_1d
-from scalabath.simulations import CoupledLindbladTrajectorySimulation
+from scalabath.simulations_lindblad import CoupledLindbladTrajectorySimulation
 from scalabath.utilities import compose
 
 DEFAULT_BOSON_DIMS = np.asarray([4, 4, 4, 4, 4, 4], dtype=int)

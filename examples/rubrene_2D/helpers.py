@@ -2,27 +2,41 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import jax
 import jax.numpy as jnp
+from jax.sharding import Mesh, NamedSharding
+from jax.sharding import PartitionSpec as P
 import numpy as np
 
 from scalabath.operators_base import boson
+from scalabath.simulations_unitary import SystemBathUnitarySimulation
 
-if TYPE_CHECKING:
-    from scalabath.simulations_unitary import SystemBathUnitarySimulation
 
-def save_metadata(args, boson_dims: np.ndarray, center_site: int, lambda_cm: np.ndarray, omega_cm: np.ndarray, output_path: Path) -> Path:
+def state_sharding_from_gpus(num_bath_modes: int) -> NamedSharding | None:
+    gpu_devices = [device for device in jax.local_devices() if device.platform == "gpu"]
+    if len(gpu_devices) <= 1:
+        print(f"Detected {len(gpu_devices)} GPU(s); state sharding disabled.")
+        return None
+
+    mesh = Mesh(np.asarray(gpu_devices), ("system",))
+    sharding = NamedSharding(mesh, P(None, "system", *([None] * num_bath_modes)))
+    print(f"Detected {len(gpu_devices)} GPUs; sharding state over the system axis.")
+    return sharding
+
+
+def save_metadata(args, boson_dims: np.ndarray, center_site_index: int, lambda_cm: np.ndarray, omega_cm: np.ndarray, output_path: Path) -> Path:
     metadata = {
         "batch_size": args.batch_size,
         "num_modes": args.num_modes,
         "boson_dims": boson_dims.tolist(),
-        "center_site": center_site,
-        "chain_length": args.chain_length,
+        "center_site_index": center_site_index,
+        "lattice_l1": args.lattice_l1,
+        "lattice_l2": args.lattice_l2,
         "dtype": args.dtype,
         "dt_fs": args.dt_fs,
-        "hopping_mev": args.hopping_mev,
+        "hopping_l1_mev": args.hopping_l1_mev,
+        "hopping_l2_mev": args.hopping_l2_mev,
         "lambda_cm_inverse": lambda_cm.tolist(),
         "omega_cm_inverse": omega_cm.tolist(),
         "periodic": args.periodic,
@@ -41,7 +55,7 @@ def build_system_bath_hamiltonians(
 ) -> list[jnp.ndarray]:
     hamiltonians = []
     batch_size = simulation.batch_size
-    chain_length = simulation.system_dim
+    system_dim = simulation.system_dim
     boson_dims = simulation.boson_dims
     dtype = simulation.dtype
     np_dtype = np.complex128 if jnp.dtype(dtype) == jnp.complex128 else np.complex64
@@ -50,26 +64,25 @@ def build_system_bath_hamiltonians(
         local_boson = simulation.boson_basis[mode_index]
         annihilation = np.asarray(local_boson.annihilation)
         creation = np.asarray(local_boson.creation)
-        matrix = np.zeros(
-            (batch_size, chain_length * mode_dim, chain_length * mode_dim),
+        blocks = np.zeros(
+            (batch_size, system_dim, mode_dim, mode_dim),
             dtype=np_dtype,
         )
 
         for batch_index in range(batch_size):
-            for site in range(chain_length):
+            for site in range(system_dim):
                 phase = phases[batch_index, site]
                 local_coupling = coupling[mode_index] * (
                     np.exp(1j * phase) * annihilation + np.exp(-1j * phase) * creation
                 )
-                start = site * mode_dim
-                stop = start + mode_dim
-                matrix[batch_index, start:stop, start:stop] = local_coupling
+                blocks[batch_index, site] = local_coupling
 
-        hamiltonians.append(jnp.asarray(matrix, dtype=dtype))
+        hamiltonians.append(jnp.asarray(blocks, dtype=dtype))
     return hamiltonians
 
 @jax.jit
 def site_populations_from_state(state: jnp.ndarray) -> jnp.ndarray:
-    batch_size, chain_length = state.shape[:2]
-    flattened_bath = state.reshape(batch_size, chain_length, -1)
-    return jnp.sum(jnp.abs(flattened_bath) ** 2, axis=-1).real
+    batch_size, system_dim = state.shape[:2]
+    flattened_bath = state.reshape(batch_size, system_dim, -1)
+    populations = jnp.sum(jnp.abs(flattened_bath) ** 2, axis=-1).real
+    return populations

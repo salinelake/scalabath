@@ -7,8 +7,10 @@ from functools import reduce
 from operator import mul
 from typing import Any
 
+import jax
 import jax.numpy as jnp
 from jax import Array
+from jax.sharding import Sharding
 
 from scalabath.utilities import batch_trace, complex_dtype, positive_int
 
@@ -22,6 +24,12 @@ def _subsystem_dims(subsystem_dims: Sequence[int]) -> tuple[int, ...]:
 
 def _prod(values: Sequence[int]) -> int:
     return reduce(mul, values, 1)
+
+
+def _place_on_sharding(array: Array, sharding: Sharding | None) -> Array:
+    if sharding is None:
+        return array
+    return jax.device_put(array, sharding)
 
 
 def _normalize_keep_axes(keep: int | Sequence[int], ndim: int) -> tuple[int, ...]:
@@ -50,6 +58,7 @@ class PureStatesEnsemble:
         hilbert_dim: Dimension of the Hilbert space.
         batch_size: Number of states in the ensemble.
         dtype: Complex dtype used when storing states.
+        sharding: Optional JAX sharding used to place stored states.
 
     Stored states have shape ``(batch_size, hilbert_dim)``. Passing a single
     state shaped ``(hilbert_dim,)`` to :meth:`set_pse` broadcasts it across the
@@ -62,10 +71,12 @@ class PureStatesEnsemble:
         batch_size: int = 1,
         *,
         dtype: Any = jnp.complex64,
+        sharding: Sharding | None = None,
     ) -> None:
         self.hilbert_dim = positive_int(hilbert_dim, "hilbert_dim")
         self.batch_size = positive_int(batch_size, "batch_size")
         self.dtype = complex_dtype(dtype)
+        self.sharding = sharding
         self._pse: Array | None = None
 
     @property
@@ -97,7 +108,7 @@ class PureStatesEnsemble:
             raise ValueError(
                 "pure states must have shape (hilbert_dim,) or (batch_size, hilbert_dim)"
             )
-        self._pse = states
+        self._pse = _place_on_sharding(states, self.sharding)
 
     @property
     def norm(self) -> Array:
@@ -112,7 +123,7 @@ class PureStatesEnsemble:
         norms = jnp.linalg.norm(states, axis=1)
         if bool(jnp.any(norms == 0)):
             raise ValueError("cannot normalize a zero pure state")
-        self._pse = states / norms[:, None]
+        self._pse = _place_on_sharding(states / norms[:, None], self.sharding)
         return self._pse
 
 
@@ -204,6 +215,7 @@ class TensorProductPureStatesEnsemble:
         subsystem_dims: Dimensions ``(n_0, n_1, ...)`` of each tensor factor.
         batch_size: Number of states in the ensemble.
         dtype: Complex dtype used when storing states.
+        sharding: Optional JAX sharding used to place stored states.
 
     The native layout is batch-first, with shape
     ``(batch_size, *subsystem_dims)``. For a system coupled to bosonic modes this
@@ -216,11 +228,13 @@ class TensorProductPureStatesEnsemble:
         batch_size: int = 1,
         *,
         dtype: Any = jnp.complex64,
+        sharding: Sharding | None = None,
     ) -> None:
         self.subsystem_dims = _subsystem_dims(subsystem_dims)
         self.hilbert_dim = _prod(self.subsystem_dims)
         self.batch_size = positive_int(batch_size, "batch_size")
         self.dtype = complex_dtype(dtype)
+        self.sharding = sharding
         self._pse: Array | None = None
 
     @property
@@ -278,7 +292,7 @@ class TensorProductPureStatesEnsemble:
                 "pure states must have shape subsystem_dims, (batch_size, *subsystem_dims), "
                 "(hilbert_dim,), or (batch_size, hilbert_dim)"
             )
-        self._pse = states
+        self._pse = _place_on_sharding(states, self.sharding)
 
     @property
     def norm(self) -> Array:
@@ -294,7 +308,7 @@ class TensorProductPureStatesEnsemble:
         if bool(jnp.any(norms == 0)):
             raise ValueError("cannot normalize a zero pure state")
         denom = norms.reshape((self.batch_size, *([1] * len(self.subsystem_dims))))
-        self._pse = states / denom
+        self._pse = _place_on_sharding(states / denom, self.sharding)
         return self._pse
 
     def set_product_state(self, factors: Sequence[Any]) -> None:

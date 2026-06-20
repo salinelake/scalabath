@@ -9,9 +9,11 @@ from scalabath.operators_groups import (
     SpinOperatorGroup,
     TightBindingChainOperatorGroup,
 )
-from scalabath.simulations import (
+from scalabath.simulations_lindblad import (
     CoupledLindbladTrajectorySimulation,
     LindbladSimulation,
+)
+from scalabath.simulations_unitary import (
     SystemBathUnitarySimulation,
     UnitarySimulation,
 )

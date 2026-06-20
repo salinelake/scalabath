@@ -9,7 +9,7 @@ import jax.numpy as jnp
 
 from scalabath.constants import Constants
 from scalabath.operators_base import boson, tight_binding_1d
-from scalabath.simulations import LindbladSimulation
+from scalabath.simulations_lindblad import LindbladSimulation
 from scalabath.utilities import compose
 
 from helpers import save_metadata, site_populations

@@ -13,7 +13,7 @@ from scalabath.operators_groups import (
     SpinOperatorGroup,
     TightBindingChainOperatorGroup,
 )
-from scalabath.simulations import UnitarySimulation
+from scalabath.simulations_unitary import UnitarySimulation
 
 pytestmark = pytest.mark.unit
 

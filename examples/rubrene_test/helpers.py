@@ -7,11 +7,24 @@ from typing import TYPE_CHECKING
 import jax
 import jax.numpy as jnp
 import numpy as np
+from jax.sharding import Mesh, NamedSharding
+from jax.sharding import PartitionSpec as P
 
 from scalabath.operators_base import boson
 
 if TYPE_CHECKING:
     from scalabath.simulations_unitary import SystemBathUnitarySimulation
+    
+def state_sharding_from_gpus(num_bath_modes: int) -> NamedSharding | None:
+    gpu_devices = [device for device in jax.local_devices() if device.platform == "gpu"]
+    if len(gpu_devices) <= 1:
+        print(f"Detected {len(gpu_devices)} GPU(s); state sharding disabled.")
+        return None
+
+    mesh = Mesh(np.asarray(gpu_devices), ("system",))
+    sharding = NamedSharding(mesh, P(None, "system", *([None] * num_bath_modes)))
+    print(f"Detected {len(gpu_devices)} GPUs; sharding state over the system axis.")
+    return sharding
 
 def save_metadata(args, boson_dims: np.ndarray, center_site: int, lambda_cm: np.ndarray, omega_cm: np.ndarray, output_path: Path) -> Path:
     metadata = {
