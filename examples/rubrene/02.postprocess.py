@@ -111,9 +111,13 @@ def plot_population(input_path, output_path):
 if __name__ == "__main__":
 
     ## simulation parameters
+    boson_dims = np.asarray([12, 6, 4, 3, 2, 4, 2, 3, 4], dtype=int)
+    boson_dim_str = "-".join([str(dim) for dim in boson_dims])
+    data_folder = f"data_L200_450fs_dim{boson_dim_str}"
+
     temp_list = np.array([200, 250, 300, 350, 400])
-    # temp_list = np.array([200, 300, 400])
-    nrun = 32
+    nrun = 12
+    batch_size = 8
     slope_list = np.zeros(len(temp_list))
 
     ## plot comparison
@@ -121,7 +125,7 @@ if __name__ == "__main__":
     for idx, T in enumerate(temp_list):
         msd_batch = []
         for run_id in range(nrun):
-            input_path = f'data_L200_450fs/T{T}_batch3_run{run_id}.npz'
+            input_path = f'{data_folder}/T{T}_batch{batch_size}_run{run_id}.npz'
             ## load metadata
             metadata_path = input_path.replace(".npz", ".json")
             with open(metadata_path, "r") as f:
@@ -140,7 +144,7 @@ if __name__ == "__main__":
         msd_batch = np.concatenate(msd_batch, axis=1) # shape: (time, batch * 4)
         msd_mean = np.mean(msd_batch, axis=1)
         msd_slope = (msd_mean[1:] - msd_mean[:-1]) / (time_fs[1:] - time_fs[:-1])
-        slope_list[idx] = (msd_mean[-1] - msd_mean[-51]) / (time_fs[-1] - time_fs[-51])
+        slope_list[idx] = (msd_mean[350] - msd_mean[300]) / (time_fs[350] - time_fs[300])
         msd_sem = np.std(msd_batch, axis=1, ddof=1) / np.sqrt(msd_batch.shape[1])
         ax[0].plot(time_fs, msd_mean, linewidth=2.0, label=f"T={T}K")
         ax[0].fill_between(time_fs, msd_mean - msd_sem, msd_mean + msd_sem, color="C0", alpha=0.25)
@@ -153,7 +157,7 @@ if __name__ == "__main__":
     ax[1].legend()
     ax[0].grid(True)
     ax[1].grid(True)
-    fig.savefig("msd_comparison.png", dpi=200)
+    fig.savefig(f"msd_comparison_{boson_dim_str}.png", dpi=200)
     plt.close(fig)
 
     ## load mobility reference data
@@ -179,5 +183,5 @@ if __name__ == "__main__":
     ax.legend()
     ax.set_xlabel("Temperature (K)")
     ax.set_ylabel("Mobility (cm$^2$/V/s)")
-    fig.savefig("mobility_comparison.png", dpi=200)
+    fig.savefig(f"mobility_comparison_{boson_dim_str}.png", dpi=200)
     plt.close(fig)

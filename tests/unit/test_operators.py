@@ -64,6 +64,34 @@ def test_tight_binding_2d_maps_sites_and_hops() -> None:
     np.testing.assert_allclose(np.asarray(hop), expected)
 
 
+def test_tight_binding_2d_triangular_hopping_open_boundaries() -> None:
+    local = tight_binding_2d(3, 3, periodic=False, dtype=jnp.complex128)
+    amp_x = 2.0 + 0.5j
+    amp_y = -0.75 + 1.25j
+
+    hopping = local.triangular_hopping((amp_x, amp_y))
+
+    expected = np.zeros((9, 9), dtype=np.complex128)
+
+    def add_hopping(source: tuple[int, int], target: tuple[int, int], amplitude: complex) -> None:
+        source_idx = local.site_index(source)
+        target_idx = local.site_index(target)
+        expected[target_idx, source_idx] += amplitude
+        expected[source_idx, target_idx] += np.conjugate(amplitude)
+
+    for x in range(3):
+        for y in range(3):
+            if x + 1 < 3:
+                add_hopping((x, y), (x + 1, y), amp_x)
+            if y + 1 < 3:
+                add_hopping((x, y), (x, y + 1), amp_y)
+            if x + 1 < 3 and y + 1 < 3:
+                add_hopping((x, y), (x + 1, y + 1), amp_y)
+
+    np.testing.assert_allclose(np.asarray(hopping), expected)
+    np.testing.assert_allclose(np.asarray(hopping), np.asarray(hopping).conj().T)
+
+
 def test_operator_groups_compose_subsystems() -> None:
     spin_group = SpinOperatorGroup(1, "spin-x")
     spin_group.add_operator("X")

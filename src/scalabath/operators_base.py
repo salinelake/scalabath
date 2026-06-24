@@ -26,7 +26,8 @@ class boson:
         self.dtype = complex_dtype(dtype)
 
         levels = jnp.arange(self.dim)
-        weights = jnp.sqrt(jnp.arange(1, self.dim, dtype=jnp.float64)).astype(self.dtype)
+        real_dtype = jnp.float64 if self.dtype == jnp.dtype(jnp.complex128) else jnp.float32
+        weights = jnp.sqrt(jnp.arange(1, self.dim).astype(real_dtype)).astype(self.dtype)
         self.identity = jnp.eye(self.dim, dtype=self.dtype)
         self.annihilation = (
             jnp.zeros((self.dim, self.dim), dtype=self.dtype)
@@ -237,6 +238,7 @@ class tight_binding_1d:
         else:
             raise ValueError(f"unknown tight-binding operator descriptor {mark!r}")
 
+
 class tight_binding_2d:
     """Single-particle tight-binding operators on a rectangular 2D lattice."""
 
@@ -305,16 +307,53 @@ class tight_binding_2d:
             .at[target, source]
             .set(jnp.asarray(amplitude, dtype=self.dtype))
         )
-    
+
     def nearest_neighbor_hopping(self, amplitude: tuple[complex, complex] = (1.0, 1.0)) -> Array:
-        """Return Hermitian nearest-neighbor hopping on the 2D lattice."""
+        """Return Hermitian nearest-neighbor hopping on the 2D lattice.
+
+        The x-direction bonds connect ``(x, y)`` to ``(x + 1, y)`` with
+        ``amplitude[0]``. The y-direction bonds connect ``(x, y)`` to
+        ``(x, y + 1)`` with ``amplitude[1]``.
+        """
         if self.nx == 2 or self.ny == 2:
-            raise ValueError("nearest_neighbor_hopping will double-count hopping amplitudes for 2x2 lattices")
+            raise ValueError(
+                "nearest_neighbor_hopping will double-count hopping amplitudes for 2x2 lattices"
+            )
         total = jnp.zeros((self.hilbert_dim, self.hilbert_dim), dtype=self.dtype)
         directions = ((1, 0), (0, 1))
         for x in range(self.nx):
             for y in range(self.ny):
-                for direction, amp in zip(directions, amplitude):
+                for direction, amp in zip(directions, amplitude, strict=True):
+                    dx, dy = direction
+                    nn_x = x + dx
+                    nn_y = y + dy
+                    if self.periodic:
+                        nn_x %= self.nx
+                        nn_y %= self.ny
+                    elif nn_x >= self.nx or nn_y >= self.ny:
+                        continue
+                    total = total + self.hopping((x, y), (nn_x, nn_y), amp)
+                    total = total + self.hopping((nn_x, nn_y), (x, y), jnp.conjugate(amp))
+        return total
+
+    def triangular_hopping(self, amplitude: tuple[complex, complex] = (1.0, 1.0)) -> Array:
+        """Return Hermitian triangular hopping on the 2D lattice.
+
+        The x-direction bonds connect ``(x, y)`` to ``(x + 1, y)`` with
+        ``amplitude[0]``. The y-direction and diagonal bonds connect
+        ``(x, y)`` to ``(x, y + 1)`` and ``(x + 1, y + 1)`` with
+        ``amplitude[1]``.
+        """
+        if self.nx == 2 or self.ny == 2:
+            raise ValueError(
+                "triangular_hopping will double-count hopping amplitudes for 2x2 lattices"
+            )
+        amp_x, amp_y = amplitude
+        total = jnp.zeros((self.hilbert_dim, self.hilbert_dim), dtype=self.dtype)
+        directions = (((1, 0), amp_x), ((0, 1), amp_y), ((1, 1), amp_y))
+        for x in range(self.nx):
+            for y in range(self.ny):
+                for direction, amp in directions:
                     dx, dy = direction
                     nn_x = x + dx
                     nn_y = y + dy
