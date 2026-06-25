@@ -23,8 +23,8 @@ DTYPES = { "complex64": jnp.complex64, "complex128": jnp.complex128 }
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a tensor-product Rubrene tight-binding lattice bath simulation.")
     parser.add_argument("--temperature", type=float, default=300.0, help="bath temperature in K")
-    parser.add_argument("--lattice-l1", type=int, default=120, help="number of tight-binding sites along easy direction")
-    parser.add_argument("--lattice-l2", type=int, default=40, help="number of tight-binding sites along hard direction")
+    parser.add_argument("--lattice-l1", type=int, default=128, help="number of tight-binding sites along easy direction")
+    parser.add_argument("--lattice-l2", type=int, default=36, help="number of tight-binding sites along hard direction")
     parser.add_argument("--hopping-l1-mev", type=float, default=83.0, help="nearest-neighbor hopping amplitude along easy direction in meV")
     parser.add_argument("--hopping-l2-mev", type=float, default=14.1, help="nearest-neighbor hopping amplitude along hard direction in meV")
     parser.add_argument("--dt-fs", type=float, default=0.1, help="time step in fs")
@@ -38,6 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--periodic", type=bool, default=True, help="use periodic boundary conditions for the tight-binding lattice")
     parser.add_argument("--dtype", choices=tuple[str, ...](DTYPES), default="complex64", help="complex dtype for JAX arrays")
     return parser.parse_args()
+
 
 def main() -> None:
     """

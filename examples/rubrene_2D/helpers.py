@@ -86,3 +86,18 @@ def site_populations_from_state(state: jnp.ndarray) -> jnp.ndarray:
     flattened_bath = state.reshape(batch_size, system_dim, -1)
     populations = jnp.sum(jnp.abs(flattened_bath) ** 2, axis=-1).real
     return populations
+
+
+def normalized_site_populations(site_populations: np.ndarray) -> np.ndarray:
+    populations = np.asarray(site_populations, dtype=float)
+    if populations.ndim != 3:
+        raise ValueError("site_populations must have shape (time, batch, n_sites)")
+
+    populations = np.where((populations < 0.0) & (populations > -1e-10), 0.0, populations)
+    if np.any(populations < -1e-10):
+        raise ValueError("site_populations contains significantly negative entries")
+
+    norms = populations.sum(axis=-1, keepdims=True)
+    if np.any(~np.isfinite(norms)) or np.any(norms <= 0.0):
+        raise ValueError("site_populations contains invalid normalization")
+    return populations / norms

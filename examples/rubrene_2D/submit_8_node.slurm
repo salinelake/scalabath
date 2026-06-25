@@ -3,9 +3,9 @@
 #SBATCH -C gpu&hbm80g
 #SBATCH -q premium
 #SBATCH -t 4:00:00
-#SBATCH -N 16
+#SBATCH -N 32
 #SBATCH --gpus-per-node=4
-#SBATCH -J 300K
+#SBATCH -J 400K
 #SBATCH -o logs/%x-%j.out
 #SBATCH -e logs/%x-%j.err
 
@@ -15,12 +15,12 @@ module load python
 conda activate scalabath
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 
-export TEMPERATURE=300.0
-export LATTICE_L1=120
-export LATTICE_L2=40
+export TEMPERATURE=400.0
+export LATTICE_L1=128
+export LATTICE_L2=36
 export SAMPLE_TIME_FS=350.0
 
-NUM_RUNS=16
+NUM_RUNS=32
 GPUS_PER_NODE=4
 CPUS_PER_TASK=64
 PYTHON_SCRIPT="01.main.py"
