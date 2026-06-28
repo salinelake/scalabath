@@ -319,7 +319,7 @@ def test_coupled_lindblad_trajectory_accepts_full_bath_hamiltonian() -> None:
         dtype=jnp.complex128,
     )
     simulation.state = initial
-    simulation.thresholds = jnp.asarray([-1.0], dtype=jnp.float32)
+    simulation._sample_thresholds = lambda: jnp.asarray([-1.0], dtype=jnp.float32)
 
     state = simulation.step()
 
@@ -332,11 +332,12 @@ def test_coupled_lindblad_trajectory_accepts_full_bath_hamiltonian() -> None:
         @ compose([u_s, jnp.eye(4, dtype=jnp.complex128)])
     )
     expected = (dense_step @ initial.reshape(-1)).reshape(1, 2, 2, 2)
+    expected = expected / jnp.linalg.norm(expected.reshape(1, -1), axis=1).reshape(1, 1, 1, 1)
 
     np.testing.assert_allclose(np.asarray(state), np.asarray(expected), atol=1e-12)
 
 
-def test_coupled_lindblad_trajectory_resamples_only_jumped_threshold() -> None:
+def test_coupled_lindblad_trajectory_uses_fresh_step_thresholds() -> None:
     initial = jnp.zeros((2, 2, 2), dtype=jnp.complex128)
     initial = initial.at[0, 0, 1].set(1)
     initial = initial.at[1, 1, 0].set(1)
@@ -349,14 +350,72 @@ def test_coupled_lindblad_trajectory_resamples_only_jumped_threshold() -> None:
         dtype=jnp.complex128,
     )
     simulation.state = initial
-    simulation.thresholds = jnp.asarray([2.0, -1.0], dtype=jnp.float32)
+    thresholds = jnp.asarray([2.0, -1.0], dtype=jnp.float32)
+    simulation._sample_thresholds = lambda: thresholds
 
     state = simulation.step()
 
     np.testing.assert_allclose(np.asarray(state[0, 0]), np.asarray([1.0, 0.0]), atol=1e-12)
     np.testing.assert_allclose(np.asarray(state[1, 1]), np.asarray([1.0, 0.0]), atol=1e-12)
-    assert 0.0 <= float(simulation.thresholds[0]) < 1.0
-    np.testing.assert_allclose(np.asarray(simulation.thresholds[1]), np.asarray(-1.0))
+    np.testing.assert_allclose(np.asarray(simulation.thresholds), np.asarray(thresholds))
+
+
+def test_coupled_lindblad_trajectory_uses_squared_norm_jump_threshold() -> None:
+    damping_rate = 0.4
+    dt = 0.2
+    bath_hamiltonian = jnp.diag(jnp.asarray([0.0, -0.5j * damping_rate], dtype=jnp.complex128))
+    simulation = CoupledLindbladTrajectorySimulation(
+        1,
+        (2,),
+        dt,
+        bath_hamiltonian=bath_hamiltonian,
+        dtype=jnp.complex128,
+    )
+    simulation.state = jnp.zeros((1, 1, 2), dtype=jnp.complex128).at[0, 0, 1].set(1.0)
+    simulation._sample_thresholds = lambda: jnp.asarray([0.94], dtype=jnp.float32)
+
+    state = simulation.step()
+
+    np.testing.assert_allclose(np.asarray(jnp.abs(state[0, 0]) ** 2), [1.0, 0.0], atol=1e-12)
+
+
+def test_coupled_lindblad_trajectory_normalizes_no_jump_and_samples_fresh_threshold() -> None:
+    damping_rate = 0.4
+    dt = 0.2
+    bath_hamiltonian = jnp.diag(jnp.asarray([0.0, -0.5j * damping_rate], dtype=jnp.complex128))
+    simulation = CoupledLindbladTrajectorySimulation(
+        1,
+        (2,),
+        dt,
+        bath_hamiltonian=bath_hamiltonian,
+        dtype=jnp.complex128,
+    )
+    simulation.state = jnp.zeros((1, 1, 2), dtype=jnp.complex128).at[0, 0, 1].set(1.0)
+    threshold_sequence = iter(
+        [
+            jnp.asarray([0.88], dtype=jnp.float32),
+            jnp.asarray([0.94], dtype=jnp.float32),
+        ]
+    )
+    simulation._sample_thresholds = lambda: next(threshold_sequence)
+
+    first_state = simulation.step()
+
+    np.testing.assert_allclose(
+        np.asarray(jnp.abs(first_state[0, 0]) ** 2),
+        [0.0, 1.0],
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(np.asarray(simulation.thresholds), np.asarray([0.88]))
+
+    second_state = simulation.step()
+
+    np.testing.assert_allclose(
+        np.asarray(jnp.abs(second_state[0, 0]) ** 2),
+        [1.0, 0.0],
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(np.asarray(simulation.thresholds), np.asarray([0.94]))
 
 
 def test_coupled_lindblad_trajectory_normalizes_tensor_state() -> None:

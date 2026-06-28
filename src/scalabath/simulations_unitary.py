@@ -244,6 +244,12 @@ def _normalize_state(state: Array) -> Array:
     denom = jnp.maximum(norms, jnp.asarray(1e-30, dtype=norms.dtype))
     return state / denom[:, None]
 
+@jax.jit
+def _norm_tensor_state(state: Array) -> Array:
+    batch_size = state.shape[0]
+    flat = state.reshape(batch_size, -1)
+    norms = jnp.linalg.norm(flat, axis=1)
+    return norms
 
 @jax.jit
 def _normalize_tensor_state(state: Array) -> Array:

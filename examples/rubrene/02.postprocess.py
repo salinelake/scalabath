@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-
+import csv
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -185,3 +185,16 @@ if __name__ == "__main__":
     ax.set_ylabel("Mobility (cm$^2$/V/s)")
     fig.savefig(f"mobility_comparison_{boson_dim_str}.png", dpi=200)
     plt.close(fig)
+
+    with open("mobility_our_results.csv", "w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(
+            [
+                "T (K)",
+                "mu_xx (cm^2/V/s)",
+            ]
+        )
+        for T, mobility in zip(temp_list, mobility):
+            writer.writerow(
+                [T, mobility]
+            )

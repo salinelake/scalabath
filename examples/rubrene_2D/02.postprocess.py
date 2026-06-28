@@ -17,10 +17,10 @@ mpl.rcParams["lines.linewidth"] = 2
 
 
 RUBRENE_LATTICE_SPACING = [7.19, 14.43]  # in angstrom
-temp_list = np.array([300])
-nrun = 16
-lattice_l1 = 120
-lattice_l2 = 40
+temp_list = np.array([200, 250, 300, 350, 400])
+nrun = 32
+lattice_l1 = 128
+lattice_l2 = 36
 data_template = "data_L{l1}x{l2}_350fs/T{T}_batch1_run{run_id}.npz"
 components = {"xx": (0, 0), "xy": (0, 1), "yy": (1, 1)}
 

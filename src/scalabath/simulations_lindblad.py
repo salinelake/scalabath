@@ -7,6 +7,7 @@ from typing import Any
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 from jax import Array
 
 from scalabath.operators_groups import OperatorGroup
@@ -16,6 +17,7 @@ from scalabath.simulations_unitary import (
     _as_local_matrix,
     _as_operator_matrix,
     _matrix_exponential,
+    _norm_tensor_state,
     _system_bath_deterministic_trajectory_step,
     _system_bath_deterministic_trajectory_step_with_full_bath,
 )
@@ -232,9 +234,28 @@ class CoupledLindbladTrajectorySimulation:
         key: Array | None = None,
         dtype: Any = jnp.complex64,
     ) -> None:
+        """
+        Initialize the coupled Lindblad trajectory simulation.
+        Args:
+            system_dim: The dimension of the system.
+            boson_dims: The dimensions of the bosonic modes.
+            dt: The time step.
+            boson_freqs: The frequencies of the bosonic modes.
+            batch_size: The batch size.
+            system_hamiltonian: The system Hamiltonian.
+            bath_hamiltonian: The total bath Hamiltonian, for all modes.
+            bath_hamiltonians: A list of bath Hamiltonians, one for each mode.
+                This is used when the bath Hamiltonian is diagonal.
+            system_bath_hamiltonians: The system-bath Hamiltonians, one for each mode.
+            jump_operators: The jump operators, one for each mode.
+            key: The random key.
+            dtype: The data type.
+        """
+
         if bath_hamiltonian is not None and bath_hamiltonians is not None:
             raise ValueError("provide either bath_hamiltonian or bath_hamiltonians, not both")
-        ## initialize the unitary part. Sanity check is done inside.
+        ## initialize the unitary part. If the bath Hamiltonian is not diagonal,
+        ## we set the bath hamiltonian to be zero in the unitary part.
         self.unitary_part = SystemBathUnitarySimulation(
             system_dim,
             boson_dims,
@@ -246,7 +267,7 @@ class CoupledLindbladTrajectorySimulation:
             system_bath_hamiltonians=system_bath_hamiltonians,
             dtype=dtype,
         )
-        ##
+        ## initialize the Lindblad part.
         self.dtype = self.unitary_part.dtype
         self.system_dim = self.unitary_part.system_dim
         self.boson_dims = self.unitary_part.boson_dims
@@ -268,7 +289,7 @@ class CoupledLindbladTrajectorySimulation:
             )
             self._bath_full = None
         self.key = jax.random.PRNGKey(0) if key is None else key
-        self.thresholds = self._sample_thresholds()
+        self.thresholds = jnp.zeros((self.batch_size,), dtype=jnp.float32)
         if jump_operators is None:
             self.jump_operators = tuple(self._default_annihilation(dim) for dim in self.boson_dims)
         else:
@@ -282,6 +303,8 @@ class CoupledLindbladTrajectorySimulation:
     def _prepare_trajectory_propagators(self) -> None:
         if not self.unitary_part._propagators_ready:
             self.unitary_part._prepare_propagators()
+        ## we need to handle the non-diagonal bath Hamiltonian here because the
+        ## unitary part does not support it.
         if self.bath_hamiltonian is not None and self._bath_full is None:
             self._bath_full = _matrix_exponential(self.bath_hamiltonian, -1j * self.dt)
 
@@ -307,33 +330,33 @@ class CoupledLindbladTrajectorySimulation:
             .set(weights)
         )
 
-    def _apply_jump_single_batch(self, state: Array, batch_index: int) -> tuple[Array, bool]:
-        one_state = state[batch_index]
-        norm = jnp.linalg.norm(one_state.reshape(-1))
-        if bool(norm >= self.thresholds[batch_index]):
-            return state, False
-
+    def _apply_jump_single_batch(self, state: Array, batch_index: int) -> Array:
+        """Apply a jump to one already-selected batch element."""
+        one_state = state[batch_index]  # (system_dim, *boson_dims)
         weights = []
         jumped_states = []
+        ## calculate <psi|L_k^\dagger L_k|psi> for each jump operator.
         for mode_index, jump_operator in enumerate(self.jump_operators):
             local_jump = jump_operator if jump_operator.ndim == 2 else jump_operator[batch_index]
             jumped = _apply_axis_single(one_state, local_jump, mode_index + 1)
             jumped_states.append(jumped)
-            weights.append(jnp.linalg.norm(jumped.reshape(-1)))
+            jumped_norm = jnp.linalg.norm(jumped.reshape(-1))
+            weights.append(jumped_norm**2)
         weight_array = jnp.asarray(weights, dtype=jnp.float32)
         total = jnp.sum(weight_array)
+        if bool(total <= 0):
+            raise ValueError(
+                "total weight of possible jumping events is zero. check the jump operators."
+            )
         self.key, subkey = jax.random.split(self.key)
-        if bool(total > 0):
-            channel = int(jax.random.choice(subkey, len(jumped_states), p=weight_array / total))
-        else:
-            channel = int(jax.random.randint(subkey, (), 0, len(jumped_states)))
+        channel = int(jax.random.choice(subkey, len(jumped_states), p=weight_array / total))
         jumped = jumped_states[channel]
-        jumped_norm = jnp.linalg.norm(jumped.reshape(-1))
-        jumped = jumped / jnp.maximum(jumped_norm, jnp.asarray(1e-30, dtype=jumped_norm.dtype))
-        self.key, subkey = jax.random.split(self.key)
-        new_threshold = jax.random.uniform(subkey, (), dtype=self.thresholds.dtype)
-        self.thresholds = self.thresholds.at[batch_index].set(new_threshold)
-        return state.at[batch_index].set(jumped), True
+        jumped_norm = weights[channel] ** 0.5  ## this is the norm of the jumped state.
+        jumped = jumped / jnp.maximum(
+            jumped_norm,
+            jnp.asarray(1e-30, dtype=jumped_norm.dtype),
+        )
+        return state.at[batch_index].set(jumped)
 
     def step(self, n_steps: int = 1) -> Array:
         """Advance by ``n_steps`` non-Hermitian trajectory steps."""
@@ -356,8 +379,15 @@ class CoupledLindbladTrajectorySimulation:
                     self._bath_full,
                     self.unitary_part._system_bath_full,
                 )
-            for batch_index in range(self.batch_size):
-                state, _ = self._apply_jump_single_batch(state, batch_index)
+
+            flat_state = state.reshape(self.batch_size, -1)
+            norm = _norm_tensor_state(flat_state)  # (batch_size,)
+            self.thresholds = self._sample_thresholds()
+            jump_mask = (norm**2) < self.thresholds  # these batches will jump
+            state = (flat_state / norm[:, None]).reshape(state.shape)
+            ## for those batches that will jump, apply the jump update.
+            for batch_index in np.flatnonzero(np.asarray(jump_mask)):
+                state = self._apply_jump_single_batch(state, batch_index)
         self.state = state
         return self.state
 

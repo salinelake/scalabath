@@ -14,12 +14,9 @@ from scalabath.operators_base import boson, tight_binding_1d
 from scalabath.simulations_lindblad import CoupledLindbladTrajectorySimulation
 from scalabath.utilities import compose
 
-DEFAULT_BOSON_DIMS = np.asarray([4, 4, 4, 4, 4, 4], dtype=int)
+DEFAULT_BOSON_DIMS = np.asarray([3, 3, 3, 3, 3, 3], dtype=int)
 
-DTYPES = {
-    "complex64": jnp.complex64,
-    "complex128": jnp.complex128,
-}
+DTYPES = { "complex64": jnp.complex64, "complex128": jnp.complex128 }
 DEFAULT_CHAIN_LENGTH = 19
 DEFAULT_HOPPING_CM = 363.0
 
@@ -32,7 +29,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=8, help="number of random phase samples")
     parser.add_argument("--run-id", type=int, default=0, help="run id used in the output filename")
     parser.add_argument("--parameters-json", type=Path, default="parameters.json", help="JSON with info for effective bath modes")
-    parser.add_argument("--dtype", choices=tuple[str, ...](DTYPES), default="complex128", help="complex dtype for JAX arrays")
+    parser.add_argument("--boson-dims", default=None, help="comma-separated local boson dimensions, e.g. 3,3,3,3,3,3")
+    parser.add_argument("--dtype", choices=tuple[str, ...](DTYPES), default="complex64", help="complex dtype for JAX arrays")
     return parser.parse_args()
 
 def main() -> None:
@@ -42,7 +40,11 @@ def main() -> None:
     args = parse_args()
     dtype = DTYPES[args.dtype]
     chain_length = DEFAULT_CHAIN_LENGTH
-    boson_dims = DEFAULT_BOSON_DIMS
+    if args.boson_dims is not None:
+        boson_dims = np.array([int(dim) for dim in args.boson_dims.split(',')], dtype=int)
+    else:
+        boson_dims = DEFAULT_BOSON_DIMS
+    boson_dims = np.asarray(boson_dims, dtype=int)
     boson_dim_str = "".join([str(dim) for dim in boson_dims])
     nmodes = len(boson_dims)
     with open(args.parameters_json, "r", encoding="utf-8") as f:
@@ -58,7 +60,6 @@ def main() -> None:
     rng = np.random.default_rng(args.run_id)
     phases = rng.uniform(0.0, 2.0 * np.pi, size=(args.batch_size, chain_length))
 
-
     data_folder = Path(f"data_{boson_dim_str}")
     data_folder.mkdir(parents=True, exist_ok=True)
     output_path = data_folder / f"batch{args.batch_size}_run{args.run_id}.npz"
@@ -66,11 +67,11 @@ def main() -> None:
     """
     Build the Hamiltonian.
     """
+    ## the tight-binding subsystem Hamiltonian.
     tb_basis = tight_binding_1d(chain_length, periodic=False, dtype=dtype)
-    bath_basis = [boson(int(dim) - 1, dtype=dtype) for dim in boson_dims]
-
     tb_sub_hamiltonian = tb_basis.nearest_neighbor_hopping(hopping)
-
+    ## the bosonic bath Hamiltonian. Adding -i * gamma_j * b^\dagger_j * b_j to the diagonal.  TODO: this should be handled inside CoupledLindbladTrajectorySimulation.
+    bath_basis = [boson(int(dim) - 1, dtype=dtype) for dim in boson_dims]
     bath_sub_hamiltonian = jnp.zeros((bath_dim, bath_dim), dtype=dtype)
     for i in range(nmodes):
         for j in range(nmodes):
@@ -84,7 +85,14 @@ def main() -> None:
         bath_operators = [boson.identity for boson in bath_basis]
         bath_operators[i] = bath_basis[i].number
         bath_sub_hamiltonian += -1j * gamma[i] * compose(bath_operators)
-
+    ## the jump operators.
+    jump_operators = []
+    for mode_index, damping_rate in enumerate(gamma):
+        bath_operators = [boson.identity for boson in bath_basis]
+        bath_operators[mode_index] = bath_basis[mode_index].annihilation
+        jump_operator = np.sqrt(2 * damping_rate) * compose(bath_operators)
+        jump_operators.append(jump_operator)
+    ## the system-bath coupling Hamiltonian.
     system_bath_hamiltonians = []
     for mode_idx in range(nmodes):
         mode_dim = int(boson_dims[mode_idx])
@@ -113,6 +121,7 @@ def main() -> None:
         system_hamiltonian=tb_sub_hamiltonian,
         bath_hamiltonian=bath_sub_hamiltonian,
         system_bath_hamiltonians=system_bath_hamiltonians,
+        jump_operators=jump_operators,
         key=jax.random.PRNGKey(args.run_id),
         dtype=dtype,
     )
@@ -136,6 +145,7 @@ def main() -> None:
     while steps_done < nsteps:
         steps_this_sample = min(sample_freq, nsteps - steps_done)
         simulation.step(n_steps=steps_this_sample)
+        simulation.normalize()
 
         steps_done += steps_this_sample
         t_fs = steps_done * args.dt_fs

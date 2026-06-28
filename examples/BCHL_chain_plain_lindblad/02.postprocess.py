@@ -36,9 +36,9 @@ if __name__ == "__main__":
     ref_c3_path = 'reference_c3.csv'
     ref_c3 = np.loadtxt(ref_c3_path, delimiter=',', skiprows=1)
     ## load the data from the simulation
-    batch_size = 8
-    nrun = 5
-    boson_dims = [2, 2, 3, 3, 2, 2]
+    batch_size = 1
+    nrun = 128
+    boson_dims = [3, 3, 3, 3, 3, 3]
     boson_dim_str = ''.join([str(dim) for dim in boson_dims])
     populations_list = []
     for runid in range(nrun):

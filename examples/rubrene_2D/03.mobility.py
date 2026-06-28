@@ -142,10 +142,10 @@ def mobility_tensor(
 
 
 if __name__ == "__main__":
-    temp_list = np.array([300])
-    nrun = 16
-    lattice_l1 = 120
-    lattice_l2 = 40
+    temp_list = np.array([200, 250, 300, 350, 400])
+    nrun = 32
+    lattice_l1 = 128
+    lattice_l2 = 36
     data_template = "data_L{l1}x{l2}_350fs/T{T}_batch1_run{run_id}.npz"
     fit_window_fs = 50.0
     components = {"xx": (0, 0), "xy": (0, 1), "yy": (1, 1)}
@@ -222,6 +222,42 @@ if __name__ == "__main__":
             writer.writerow(
                 [T, mobility[0, 0], mobility[0, 1], mobility[1, 0], mobility[1, 1]]
             )
+    """
+    Plot the mobility along the easy and hard axes.
+    """
+    ## load mobility reference data
+    mobility_ref = np.loadtxt("mobility.csv", delimiter=',')
+    ref_temp = mobility_ref[:, 0]
+    ref_dmrg = mobility_ref[:, 1] 
+    ref_fgr = mobility_ref[:, 2]
+    ref_diqcd = mobility_ref[:, 3]
+    ref_ehrenfest = mobility_ref[:, 4]
+    ##
+    mobility_xx = np.array([mobility[0, 0] for _, mobility, _ in mobility_results])
+    mobility_yy = np.array([mobility[1, 1] for _, mobility, _ in mobility_results])
+
+    fig, ax = plt.subplots(1,2, figsize=(8, 4))
+    ax[0].plot(temp_list, mobility_xx, 'o-', label='xx')
+    ax[0].plot(ref_temp, ref_dmrg, 'o-', label='DMRG')
+    # ax[0].plot(ref_temp, ref_fgr, 'o-', label='FGR')
+    ax[0].plot(ref_temp, ref_diqcd, 'o-', label='DIQCD')
+    ax[0].plot(ref_temp, ref_ehrenfest, 'o-', label='Ehrenfest')
+    ax[0].legend()
+    ax[0].set_xlabel("Temperature (K)")
+    ax[0].set_ylabel("Mobility (cm$^2$/V/s)")
+    ax[1].plot(temp_list, mobility_yy, 'o-', label='yy')
+    ax[0].legend()
+    ax[0].set_xlabel("Temperature (K)")
+    ax[0].set_ylabel("Mobility (cm$^2$/V/s)")
+    ax[0].set_title("Easy axis")
+    ax[1].set_xlabel("Temperature (K)")
+    ax[1].set_ylabel("Mobility (cm$^2$/V/s)")
+    ax[1].set_title("Hard axis")
+    plt.tight_layout()
+    fig.savefig("mobility.png", dpi=200)
+    plt.close(fig)
+    
+
 
 """
 The mobility tensor we get here is 

@@ -14,7 +14,7 @@ from scalabath.utilities import compose
 
 from helpers import save_metadata, site_populations
 
-DEFAULT_BOSON_DIMS = np.asarray([2, 2, 3, 3, 2, 2], dtype=int)
+DEFAULT_BOSON_DIMS = np.asarray([3, 3, 3, 3, 3, 3], dtype=int)
 
 DTYPES = {
     "complex64": jnp.complex64,
@@ -29,11 +29,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dt-fs", type=float, default=0.1, help="time step in fs")
     parser.add_argument("--sample-time-fs", type=float, default=100.0, help="total time in fs")
     parser.add_argument("--sample-period-fs", type=float, default=1.0, help="save period in fs")
-    parser.add_argument("--batch-size", type=int, default=8, help="number of random phase samples")
-    parser.add_argument("--run-id", type=int, default=4, help="run id used in the output filename")
+    parser.add_argument("--batch-size", type=int, default=1, help="number of random phase samples")
+    parser.add_argument("--run-id", type=int, default=0, help="run id used in the output filename")
     parser.add_argument("--parameters-json", type=Path, default="parameters.json", help="JSON with info for effective bath modes")
     parser.add_argument("--damping-epsilon", type=float, default=1e-8, help="damping rate lower than this is considered to be zero")
-    parser.add_argument("--dtype", choices=tuple[str, ...](DTYPES), default="complex128", help="complex dtype for JAX arrays")
+    parser.add_argument("--dtype", choices=tuple[str, ...](DTYPES), default="complex64", help="complex dtype for JAX arrays")
     return parser.parse_args()
 
 def main() -> None:
