@@ -19,7 +19,7 @@ from scalabath.simulations_unitary import (
     SystemBathUnitarySimulation,
     UnitarySimulation,
 )
-from scalabath.utilities import compose
+from scalabath.utilities import adjoint, compose
 
 pytestmark = pytest.mark.unit
 
@@ -277,11 +277,13 @@ def test_system_bath_thermal_sampling_uses_state_sharding() -> None:
 
 def test_coupled_lindblad_trajectory_accepts_local_bath_hamiltonians() -> None:
     initial = jnp.zeros((1, 2, 2), dtype=jnp.complex128).at[0, 0, 1].set(1)
+    annihilation = jnp.asarray([[0, 1], [0, 0]], dtype=jnp.complex128)
     simulation = CoupledLindbladTrajectorySimulation(
         2,
         (2,),
         0.01,
-        bath_hamiltonians=[jnp.diag(jnp.asarray([0, -0.1j], dtype=jnp.complex128))],
+        bath_hamiltonians=[jnp.zeros((2, 2), dtype=jnp.complex128)],
+        jump_operators=[jnp.sqrt(jnp.asarray(0.2, dtype=jnp.complex128)) * annihilation],
         dtype=jnp.complex128,
     )
     simulation.state = initial
@@ -305,6 +307,7 @@ def test_coupled_lindblad_trajectory_accepts_full_bath_hamiltonian() -> None:
     )
     projector_zero = jnp.asarray([[1.0, 0.0], [0.0, 0.0]], dtype=jnp.complex128)
     mode_coupling = jnp.asarray([[0.0, 1.0], [1.0, 0.0]], dtype=jnp.complex128)
+    zero_jump = jnp.zeros_like(mode_coupling)
     zero_coupling = jnp.zeros_like(mode_coupling)
     coupling = compose([projector_zero, mode_coupling])
     coupling_blocks = jnp.stack([mode_coupling, zero_coupling])
@@ -316,6 +319,7 @@ def test_coupled_lindblad_trajectory_accepts_full_bath_hamiltonian() -> None:
         system_hamiltonian=system_hamiltonian,
         bath_hamiltonian=bath_hamiltonian,
         system_bath_hamiltonians=[coupling_blocks, zero_blocks],
+        jump_operators=[zero_jump, zero_jump],
         dtype=jnp.complex128,
     )
     simulation.state = initial
@@ -337,15 +341,70 @@ def test_coupled_lindblad_trajectory_accepts_full_bath_hamiltonian() -> None:
     np.testing.assert_allclose(np.asarray(state), np.asarray(expected), atol=1e-12)
 
 
+def test_coupled_lindblad_trajectory_prepares_effective_bath_hamiltonians() -> None:
+    annihilation = jnp.asarray([[0, 1], [0, 0]], dtype=jnp.complex128)
+    bath_hamiltonian = jnp.diag(jnp.asarray([0.0, 0.3], dtype=jnp.complex128))
+    jump_operator = jnp.sqrt(jnp.asarray(0.4, dtype=jnp.complex128)) * annihilation
+
+    simulation = CoupledLindbladTrajectorySimulation(
+        1,
+        (2,),
+        0.01,
+        bath_hamiltonians=[bath_hamiltonian],
+        jump_operators=[jump_operator],
+        dtype=jnp.complex128,
+    )
+
+    expected = bath_hamiltonian - 0.5j * adjoint(jump_operator) @ jump_operator
+    np.testing.assert_allclose(
+        np.asarray(simulation.unitary_part.bath_hamiltonians[0]),
+        np.asarray(expected),
+        atol=1e-12,
+    )
+
+
+def test_coupled_lindblad_trajectory_prepares_effective_full_bath_hamiltonian() -> None:
+    annihilation = jnp.asarray([[0, 1], [0, 0]], dtype=jnp.complex128)
+    identity = jnp.eye(2, dtype=jnp.complex128)
+    bath_hamiltonian = compose(
+        [
+            jnp.diag(jnp.asarray([0.0, 0.2], dtype=jnp.complex128)),
+            identity,
+        ]
+    )
+    jump_operator_0 = jnp.sqrt(jnp.asarray(0.4, dtype=jnp.complex128)) * annihilation
+    jump_operator_1 = jnp.sqrt(jnp.asarray(0.8, dtype=jnp.complex128)) * annihilation
+
+    simulation = CoupledLindbladTrajectorySimulation(
+        1,
+        (2, 2),
+        0.01,
+        bath_hamiltonian=bath_hamiltonian,
+        jump_operators=[jump_operator_0, jump_operator_1],
+        dtype=jnp.complex128,
+    )
+
+    expected = bath_hamiltonian
+    expected = expected - 0.5j * compose([adjoint(jump_operator_0) @ jump_operator_0, identity])
+    expected = expected - 0.5j * compose([identity, adjoint(jump_operator_1) @ jump_operator_1])
+    np.testing.assert_allclose(
+        np.asarray(simulation.bath_hamiltonian),
+        np.asarray(expected),
+        atol=1e-12,
+    )
+
+
 def test_coupled_lindblad_trajectory_uses_fresh_step_thresholds() -> None:
     initial = jnp.zeros((2, 2, 2), dtype=jnp.complex128)
     initial = initial.at[0, 0, 1].set(1)
     initial = initial.at[1, 1, 0].set(1)
+    annihilation = jnp.asarray([[0, 1], [0, 0]], dtype=jnp.complex128)
     simulation = CoupledLindbladTrajectorySimulation(
         2,
         (2,),
         0.01,
         batch_size=2,
+        jump_operators=[annihilation],
         key=jax.random.PRNGKey(123),
         dtype=jnp.complex128,
     )
@@ -363,12 +422,13 @@ def test_coupled_lindblad_trajectory_uses_fresh_step_thresholds() -> None:
 def test_coupled_lindblad_trajectory_uses_squared_norm_jump_threshold() -> None:
     damping_rate = 0.4
     dt = 0.2
-    bath_hamiltonian = jnp.diag(jnp.asarray([0.0, -0.5j * damping_rate], dtype=jnp.complex128))
+    annihilation = jnp.asarray([[0, 1], [0, 0]], dtype=jnp.complex128)
     simulation = CoupledLindbladTrajectorySimulation(
         1,
         (2,),
         dt,
-        bath_hamiltonian=bath_hamiltonian,
+        bath_hamiltonian=jnp.zeros((2, 2), dtype=jnp.complex128),
+        jump_operators=[jnp.sqrt(jnp.asarray(damping_rate, dtype=jnp.complex128)) * annihilation],
         dtype=jnp.complex128,
     )
     simulation.state = jnp.zeros((1, 1, 2), dtype=jnp.complex128).at[0, 0, 1].set(1.0)
@@ -382,12 +442,13 @@ def test_coupled_lindblad_trajectory_uses_squared_norm_jump_threshold() -> None:
 def test_coupled_lindblad_trajectory_normalizes_no_jump_and_samples_fresh_threshold() -> None:
     damping_rate = 0.4
     dt = 0.2
-    bath_hamiltonian = jnp.diag(jnp.asarray([0.0, -0.5j * damping_rate], dtype=jnp.complex128))
+    annihilation = jnp.asarray([[0, 1], [0, 0]], dtype=jnp.complex128)
     simulation = CoupledLindbladTrajectorySimulation(
         1,
         (2,),
         dt,
-        bath_hamiltonian=bath_hamiltonian,
+        bath_hamiltonian=jnp.zeros((2, 2), dtype=jnp.complex128),
+        jump_operators=[jnp.sqrt(jnp.asarray(damping_rate, dtype=jnp.complex128)) * annihilation],
         dtype=jnp.complex128,
     )
     simulation.state = jnp.zeros((1, 1, 2), dtype=jnp.complex128).at[0, 0, 1].set(1.0)
@@ -419,7 +480,14 @@ def test_coupled_lindblad_trajectory_normalizes_no_jump_and_samples_fresh_thresh
 
 
 def test_coupled_lindblad_trajectory_normalizes_tensor_state() -> None:
-    simulation = CoupledLindbladTrajectorySimulation(2, (2,), 0.01, dtype=jnp.complex128)
+    jump_operator = jnp.zeros((2, 2), dtype=jnp.complex128)
+    simulation = CoupledLindbladTrajectorySimulation(
+        2,
+        (2,),
+        0.01,
+        jump_operators=[jump_operator],
+        dtype=jnp.complex128,
+    )
     simulation.state = jnp.zeros((1, 2, 2), dtype=jnp.complex128).at[0, 1, 1].set(2.0)
 
     simulation.normalize()

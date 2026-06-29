@@ -28,14 +28,14 @@ def normalized_site_populations(site_populations: np.ndarray) -> np.ndarray:
 
 if __name__ == "__main__":
     ## get the reference data from JPCL paper
-    ref_c0_path = 'reference_c0.csv'
-    ref_c0 = np.loadtxt(ref_c0_path, delimiter=',', skiprows=1)
-    ref_c1_path = 'reference_c1.csv'
-    ref_c1 = np.loadtxt(ref_c1_path, delimiter=',', skiprows=1)
-    ref_c2_path = 'reference_c2.csv'
-    ref_c2 = np.loadtxt(ref_c2_path, delimiter=',', skiprows=1)
-    ref_c3_path = 'reference_c3.csv'
-    ref_c3 = np.loadtxt(ref_c3_path, delimiter=',', skiprows=1)
+    ref_s8_path = 'reference_s8.csv'
+    ref_s8 = np.loadtxt(ref_s8_path, delimiter=',', skiprows=1)
+    ref_s9_path = 'reference_s9.csv'
+    ref_s9 = np.loadtxt(ref_s9_path, delimiter=',', skiprows=1)
+    ref_s10_path = 'reference_s10.csv'
+    ref_s10 = np.loadtxt(ref_s10_path, delimiter=',', skiprows=1)
+    ref_s11_path = 'reference_s11.csv'
+    ref_s11 = np.loadtxt(ref_s11_path, delimiter=',', skiprows=1)
     ## load the data from the simulation
     batch_size = 8
     nrun = 16
@@ -54,31 +54,30 @@ if __name__ == "__main__":
     populations_sem = np.std(populations_list, axis=1, ddof=1) / np.sqrt(populations_list.shape[1])
     chain_length = populations_mean.shape[-1]
     center_site = (chain_length - 1) // 2
-
+    
+    titles = ["Site 10", "Site 11", "Site 9", "Site 8"]
     fig, ax = plt.subplots(2, 2, figsize=(7, 5))
     ax[0, 0].plot(time_fs, populations_mean[:, center_site], label='This work')
     ax[0, 0].fill_between(time_fs, populations_mean[:, center_site] - populations_sem[:, center_site], populations_mean[:, center_site] + populations_sem[:, center_site], color='C0', alpha=0.25)
-    ax[0, 0].plot(ref_c0[:, 0], ref_c0[:, 1], linestyle='--', color='tab:orange', label='Ref')
+    ax[0, 0].plot(ref_s10[:, 0], ref_s10[:, 1], linestyle='--', color='tab:orange', label='Ref')
     ax[0, 1].plot(time_fs, populations_mean[:, center_site + 1], label='This work')
     ax[0, 1].fill_between(time_fs, populations_mean[:, center_site + 1] - populations_sem[:, center_site + 1], populations_mean[:, center_site + 1] + populations_sem[:, center_site + 1], color='C0', alpha=0.25)
-    ax[0, 1].plot(ref_c1[:, 0], ref_c1[:, 1], linestyle='--', color='tab:orange', label='Ref')
-    ax[1, 0].plot(time_fs, populations_mean[:, center_site + 2], label='This work')
-    ax[1, 0].fill_between(time_fs, populations_mean[:, center_site + 2] - populations_sem[:, center_site + 2], populations_mean[:, center_site + 2] + populations_sem[:, center_site + 2], color='C0', alpha=0.25)
-    ax[1, 0].plot(ref_c2[:, 0], ref_c2[:, 1], linestyle='--', color='tab:orange', label='Ref')
-    ax[1, 1].plot(time_fs, populations_mean[:, center_site + 3], label='This work')
-    ax[1, 1].fill_between(time_fs, populations_mean[:, center_site + 3] - populations_sem[:, center_site + 3], populations_mean[:, center_site + 3] + populations_sem[:, center_site + 3], color='C0', alpha=0.25)
-    ax[1, 1].plot(ref_c3[:, 0], ref_c3[:, 1], linestyle='--', color='tab:orange', label='Ref')
+    ax[0, 1].plot(ref_s11[:, 0], ref_s11[:, 1], linestyle='--', color='tab:orange', label='Ref')
+    ax[1, 0].plot(time_fs, populations_mean[:, center_site -1], label='This work')
+    ax[1, 0].fill_between(time_fs, populations_mean[:, center_site -1] - populations_sem[:, center_site -1], populations_mean[:, center_site -1] + populations_sem[:, center_site -1], color='C0', alpha=0.25)
+    ax[1, 0].plot(ref_s9[:, 0], ref_s9[:, 1], linestyle='--', color='tab:orange', label='Ref')
+    ax[1, 1].plot(time_fs, populations_mean[:, center_site -2], label='This work')
+    ax[1, 1].fill_between(time_fs, populations_mean[:, center_site -2] - populations_sem[:, center_site -2], populations_mean[:, center_site -2] + populations_sem[:, center_site -2], color='C0', alpha=0.25)
+    ax[1, 1].plot(ref_s8[:, 0], ref_s8[:, 1], linestyle='--', color='tab:orange', label='Ref')
     for idx, _ax in enumerate(ax.flat):
         _ax.set_ylim(0, 1.05)
         _ax.legend(frameon=False)
         _ax.set_xlabel("Time (fs)")
         _ax.set_ylabel("Population")
-        if idx == 0:
-            _ax.set_title("Center")
-        else:
-            _ax.set_title(f"Center + {idx}")
+        _ax.set_title(titles[idx])
     plt.tight_layout()
     fig.savefig(f'populations-{boson_dim_str}.png', dpi=200)
+
 
     fig, ax = plt.subplots(figsize=(6, 3))
 
@@ -87,12 +86,11 @@ if __name__ == "__main__":
     sim_colors = ['tab:red', 'tab:gray', 'tab:green', 'tab:blue']
     ref_colors = ['red', 'gray', 'green', 'blue']
 
-    shift_labels = ['Site 10', 'Site 9&11', 'Site 8&12', 'Site 7&13']
-    pop_indices = [center_site, center_site + 1, center_site + 2, center_site + 3]
-    ref_pops = [ref_c0, ref_c1, ref_c2, ref_c3]
+    shift_labels = ['Site 10', 'Site 11', 'Site 9', 'Site 8']
+    pop_indices = [center_site, center_site + 1, center_site -1, center_site -2]
+    ref_pops = [ref_s10, ref_s11, ref_s9, ref_s8]
 
     # Plot references
-
 
     # Plot "This work" population curves and range
     for i, idx in enumerate(pop_indices):

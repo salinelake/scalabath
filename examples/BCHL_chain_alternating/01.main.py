@@ -18,7 +18,8 @@ DEFAULT_BOSON_DIMS = np.asarray([5, 5, 5, 5, 5, 5], dtype=int)
 
 DTYPES = { "complex64": jnp.complex64, "complex128": jnp.complex128 }
 DEFAULT_CHAIN_LENGTH = 19
-DEFAULT_HOPPING_CM = 363.0
+DEFAULT_HOPPING_CM = np.array([363.0, 320.0], dtype=float)
+DEFAULT_ONSITE_CM = np.array([12653.66, 12457.66], dtype=float)
 
 
 def parse_args() -> argparse.Namespace:
@@ -54,6 +55,8 @@ def main() -> None:
     gamma_cm = np.array(parameters_json["Dissipation_gamma"], dtype=float) ## note that this is half of the damping in standard Lindblad form.
     gamma = gamma_cm * Constants.cm_inverse_energy
     hopping = DEFAULT_HOPPING_CM * Constants.cm_inverse_energy
+    onsite = DEFAULT_ONSITE_CM * Constants.cm_inverse_energy
+    onsite = onsite - onsite.min()
     dt = args.dt_fs * Constants.fs
     bath_dim = int(np.prod(boson_dims))
 
@@ -69,7 +72,19 @@ def main() -> None:
     """
     ## the tight-binding subsystem Hamiltonian.
     tb_basis = tight_binding_1d(chain_length, periodic=False, dtype=dtype)
-    tb_sub_hamiltonian = tb_basis.nearest_neighbor_hopping(hopping)
+    ## we need to handbuild the hopping Hamiltonian because there is alternating hopping amplitudes.
+    tb_sub_hamiltonian = jnp.zeros((chain_length, chain_length), dtype=dtype)
+    for site_idx in range(chain_length-1):
+        neighbor_idx = site_idx + 1
+        hopping_amplitude = hopping[site_idx % 2]
+        tb_sub_hamiltonian += tb_basis.hopping(site_idx, neighbor_idx, hopping_amplitude)
+        tb_sub_hamiltonian += tb_basis.hopping(neighbor_idx, site_idx, hopping_amplitude)
+    ## add the onsite potential
+    tb_onsite_potential = jnp.zeros((chain_length, chain_length), dtype=dtype)
+    for site_idx in range(chain_length):
+        tb_onsite_potential = tb_onsite_potential.at[site_idx, site_idx].set(onsite[site_idx % 2])
+    tb_sub_hamiltonian += tb_onsite_potential
+
     ## the bosonic bath Hamiltonian. Adding -i * gamma_j * b^\dagger_j * b_j to the diagonal.  TODO: this should be handled inside CoupledLindbladTrajectorySimulation.
     bath_basis = [boson(int(dim) - 1, dtype=dtype) for dim in boson_dims]
     bath_sub_hamiltonian = jnp.zeros((bath_dim, bath_dim), dtype=dtype)
@@ -121,6 +136,10 @@ def main() -> None:
         dtype=dtype,
     )
     center_site = (chain_length - 1) // 2
+    if tb_onsite_potential[center_site, center_site].real > tb_onsite_potential[center_site-1, center_site-1].real:
+        print('Center site is on the high energy site')
+    else:
+        print('Center site is on the low energy site')
     initial_state = jnp.zeros((args.batch_size, chain_length, *boson_dims), dtype=dtype)
     initial_state = initial_state.at[(slice(None), center_site, *([0] * nmodes))].set(1.0)
     simulation.state = initial_state

@@ -9,8 +9,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 mpl.rcParams['axes.linewidth'] = 2
-mpl.rcParams['xtick.labelsize'] = 12
-mpl.rcParams['ytick.labelsize'] = 12
+mpl.rcParams['xtick.labelsize'] = 18
+mpl.rcParams['ytick.labelsize'] = 18
+mpl.rcParams['axes.labelsize'] = 20
 mpl.rcParams['lines.markersize'] = 6
 mpl.rcParams['lines.linewidth'] = 2
 
@@ -111,13 +112,13 @@ def plot_population(input_path, output_path):
 if __name__ == "__main__":
 
     ## simulation parameters
-    boson_dims = np.asarray([12, 6, 4, 3, 2, 4, 2, 3, 4], dtype=int)
+    boson_dims = np.asarray([12, 6, 4, 3, 3, 4, 3, 3, 4], dtype=int)
     boson_dim_str = "-".join([str(dim) for dim in boson_dims])
     data_folder = f"data_L200_450fs_dim{boson_dim_str}"
 
     temp_list = np.array([200, 250, 300, 350, 400])
-    nrun = 12
-    batch_size = 8
+    nrun = 20
+    batch_size = 5
     slope_list = np.zeros(len(temp_list))
 
     ## plot comparison
@@ -160,38 +161,17 @@ if __name__ == "__main__":
     fig.savefig(f"msd_comparison_{boson_dim_str}.png", dpi=200)
     plt.close(fig)
 
-    ## load mobility reference data
-    mobility_ref = np.loadtxt("mobility.csv", delimiter=',')
-    ref_temp = mobility_ref[:, 0]
-    ref_dmrg = mobility_ref[:, 1] 
-    ref_fgr = mobility_ref[:, 2]
-    ref_diqcd = mobility_ref[:, 3]
-    ref_ehrenfest = mobility_ref[:, 4]
-
-
     ## calculate mobility
     rubrene_R = 7.19 * Constants.Angstrom
     factor = rubrene_R ** 2/ Constants.cm**2 * Constants.eV / Constants.kb / temp_list / 2.0 * Constants.s / Constants.fs
     mobility = slope_list * factor
-    fig, ax = plt.subplots(figsize=(4, 4))
-    ax.plot(ref_temp, ref_dmrg, 'o-', label="DMRG")
-    # ax.plot(ref_temp, ref_fgr, 'o-', label="FGR")
-    ax.plot(ref_temp, ref_diqcd, 'o-', label="DIQCD")
-    ax.plot(ref_temp, ref_ehrenfest, 'o-', label="Ehrenfest")
-    ax.plot(temp_list, mobility, '*-', label='This work', markersize=10)
-    ax.plot(300, 40, marker='v', markersize=7, linewidth=0,color='blue', label='EXP')
-    ax.legend()
-    ax.set_xlabel("Temperature (K)")
-    ax.set_ylabel("Mobility (cm$^2$/V/s)")
-    fig.savefig(f"mobility_comparison_{boson_dim_str}.png", dpi=200)
-    plt.close(fig)
 
     with open("mobility_our_results.csv", "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(
             [
-                "T (K)",
-                "mu_xx (cm^2/V/s)",
+                "# Temperature (K)",
+                "# Mobility (cm^2/V/s)",
             ]
         )
         for T, mobility in zip(temp_list, mobility):
