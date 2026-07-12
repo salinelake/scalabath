@@ -56,16 +56,16 @@ if __name__ == "__main__":
     center_site = (chain_length - 1) // 2
 
     fig, ax = plt.subplots(2, 2, figsize=(7, 5))
-    ax[0, 0].plot(time_fs, populations_mean[:, center_site], label='This work')
+    ax[0, 0].plot(time_fs, populations_mean[:, center_site], label='SPOC')
     ax[0, 0].fill_between(time_fs, populations_mean[:, center_site] - populations_sem[:, center_site], populations_mean[:, center_site] + populations_sem[:, center_site], color='C0', alpha=0.25)
     ax[0, 0].plot(ref_c0[:, 0], ref_c0[:, 1], linestyle='--', color='tab:orange', label='Ref')
-    ax[0, 1].plot(time_fs, populations_mean[:, center_site + 1], label='This work')
+    ax[0, 1].plot(time_fs, populations_mean[:, center_site + 1], label='SPOC')
     ax[0, 1].fill_between(time_fs, populations_mean[:, center_site + 1] - populations_sem[:, center_site + 1], populations_mean[:, center_site + 1] + populations_sem[:, center_site + 1], color='C0', alpha=0.25)
     ax[0, 1].plot(ref_c1[:, 0], ref_c1[:, 1], linestyle='--', color='tab:orange', label='Ref')
-    ax[1, 0].plot(time_fs, populations_mean[:, center_site + 2], label='This work')
+    ax[1, 0].plot(time_fs, populations_mean[:, center_site + 2], label='SPOC')
     ax[1, 0].fill_between(time_fs, populations_mean[:, center_site + 2] - populations_sem[:, center_site + 2], populations_mean[:, center_site + 2] + populations_sem[:, center_site + 2], color='C0', alpha=0.25)
     ax[1, 0].plot(ref_c2[:, 0], ref_c2[:, 1], linestyle='--', color='tab:orange', label='Ref')
-    ax[1, 1].plot(time_fs, populations_mean[:, center_site + 3], label='This work')
+    ax[1, 1].plot(time_fs, populations_mean[:, center_site + 3], label='SPOC')
     ax[1, 1].fill_between(time_fs, populations_mean[:, center_site + 3] - populations_sem[:, center_site + 3], populations_mean[:, center_site + 3] + populations_sem[:, center_site + 3], color='C0', alpha=0.25)
     ax[1, 1].plot(ref_c3[:, 0], ref_c3[:, 1], linestyle='--', color='tab:orange', label='Ref')
     for idx, _ax in enumerate(ax.flat):
@@ -91,26 +91,27 @@ if __name__ == "__main__":
     pop_indices = [center_site, center_site + 1, center_site + 2, center_site + 3]
     ref_pops = [ref_c0, ref_c1, ref_c2, ref_c3]
 
-    # Plot references
-
 
     # Plot "This work" population curves and range
     for i, idx in enumerate(pop_indices):
         # The main population curves
         # l = ax.plot(time_fs, populations_mean[:, idx], linestyle=":", color=sim_colors[i], linewidth=3, alpha=0.8, label=f"This work ({shift_labels[i]})")[0]
-        l = ax.plot(time_fs, populations_mean[:, idx], linestyle="-", linewidth=0, marker='o', markersize=3, color=sim_colors[i], alpha=0.8, label=f"This work ({shift_labels[i]})")[0]
+        l = ax.plot(time_fs, populations_mean[:, idx], linestyle="-", linewidth=0, marker='o', markersize=3, color=sim_colors[i], alpha=0.8, label=f"SPOC ({shift_labels[i]})")[0]
 
         lines.append(l)
-        labels.append(f"This work ({shift_labels[i]})")
+        labels.append(f"SPOC ({shift_labels[i]})")
 
+    # Plot references
     for i, (ref, label) in enumerate(zip(ref_pops, shift_labels)):
-        l = ax.plot(ref[:, 0], ref[:, 1],  linestyle="-",linewidth=1,  alpha=1,   color=ref_colors[i], label=f"Ref ({label})")[0]
+        l = ax.plot(ref[:, 0], ref[:, 1],  linestyle="-",linewidth=1,  alpha=1,   color=ref_colors[i], label=f"MPI ({label})")[0]
         lines.append(l)
-        labels.append(f"Ref ({label})")
+        labels.append(f"MPI ({label})")
 
     ax.set_ylim(0, 1.05)
-    ax.set_xlabel("Time (fs)")
+    ax.set_xlabel("t (fs)")
     ax.set_ylabel("Population")
+    ax.tick_params(axis='x', which='both', pad=6)
+
     ax.legend(frameon=False, loc="upper right", ncol=2, fontsize=11)
     plt.tight_layout()
     fig.savefig(f'all-populations-{boson_dim_str}.png', dpi=300)

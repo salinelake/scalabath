@@ -113,6 +113,8 @@ if __name__ == "__main__":
 
     ## simulation parameters
     boson_dims = np.asarray([12, 6, 4, 3, 3, 4, 3, 3, 4], dtype=int)
+    # boson_dims = np.asarray([12, 6, 4, 3, 2, 4, 2, 3, 4], dtype=int)
+
     boson_dim_str = "-".join([str(dim) for dim in boson_dims])
     data_folder = f"data_L200_450fs_dim{boson_dim_str}"
 
@@ -166,7 +168,7 @@ if __name__ == "__main__":
     factor = rubrene_R ** 2/ Constants.cm**2 * Constants.eV / Constants.kb / temp_list / 2.0 * Constants.s / Constants.fs
     mobility = slope_list * factor
 
-    with open("mobility_our_results.csv", "w", newline="", encoding="utf-8") as handle:
+    with open(f"mobility_{boson_dim_str}.csv", "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(
             [
