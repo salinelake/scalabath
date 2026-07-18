@@ -76,92 +76,64 @@ python -m pip install -e .
 
 ## Applications
 
-One major application of the package is to simulate a reduced open quantum
-system where the multi-site, multi-mode environment is replaced by a single
-multi-mode bosonic bath through random phase approximation. There are two
-scenarios: (1) the Hamiltonian case and (2) the Lindblad case.
+One major application of the package is to simulate quantum transport in extended systems where the multi-site, multi-mode environment is replaced by a single
+multi-mode bosonic bath through random phase approximation.  We call this the stochastic phase algorithm (SPA).
 
-### Hamiltonian case
-
-Consider the following problem:
-
+### Quantum transport models
+We focus on quantum transport described by an $N_{\text{s}}$-site Holstein Hamiltonian, $\hat H=\hat H_{\text{s}}+\hat H_{\text{b}}+\hat H_{\text{sb}}$. 
+The tight-binding Hamiltonian is 
+$\hat H_{\text{s}}=\sum_{i=1}^{N_{\text{s}}}U_i |i\rangle\langle i|+\sum_{  i\neq j}^{N_{\text{s}}}V_{ij}|i\rangle\langle j|$, 
+where $|i\rangle$ denotes the tight-binding state on site-$i$, $U_i$ is the site energy, and $V_{ij}$ is the hopping amplitude. The connectivity of the tight-binding network is arbitrary.
+The vibronic environment of each site consists of $n$  bosonic modes, $\hat H_{\rm b}=\sum_{i=1}^{N_{\text{s}}}\sum_{\alpha=1}^{n}\omega_{\alpha}\hat b_{i\alpha}^\dagger \hat b_{i\alpha}$, where $\hat b_{i\alpha}^\dagger$ creates a vibronic excitation in mode $\alpha$ attached to site $i$. The system-bath coupling is local and diagonal,
 $$
-\hat{H}_{B}=\sum_{k=1}^{N}\omega_{k}\hat{b}_{k}^{\dagger}\hat{b}_{k},
+    \hat H_{\text{sb}}=\sum_{i=1}^{N_{\text{s}}}  |i\rangle\langle i| \otimes \sum_{\alpha=1}^{n}g_{\alpha}\omega_{\alpha}(\hat b_{i\alpha}^\dagger+\hat b_{i\alpha}),
 $$
+with dimensionless coupling $g_{\alpha}$.
+The local reorganization energy $\lambda=\sum_{\alpha=1}^{n}g_\alpha^2\omega_\alpha$ measures the energetic stabilization due to EVC. 
+The intermediate-coupling regime corresponds to $\lambda$ being of the same order as a typical hopping amplitude, so neither weak-coupling nor strong-coupling descriptions are reliable.
 
-and
-
+We assume the initial state is a tensor product of a system state $\rho_{\text{s}}(0)$ and a thermal environmental state $\rho_{\text{b},\beta}\propto\exp(-\beta \hat H_{\text{b}})$. We denote the reduced system density operator by $\rho_{\text{s}}(t)$. The environmental influence on $\rho_{\text{s}}(t)$ is encoded in the BCF $C_{ij}(t)$ between site-$i$ and $j$, which can be obtained from first-principles calculations or from vibronic spectral densities inferred from spectroscopic data. 
+For homogeneous Gaussian baths, $C(t)$ is diagonal. 
+$C_{ij}(t)=c(t)\delta_{ij}$, 
+with
 $$
-\hat{H}_{SB}=\sum_{j=1}^{n} \sum_{k=1}^{N} |j\rangle\langle j|  \otimes
-(g_{k}e^{i\phi_{jk}}\hat{b}_{k}
-+g_{k}^{*} e^{-i\phi_{jk}^{*}}\hat{b}_{k}^{\dagger}).
+c(t)=\sum_{\alpha=1}^{n} g_\alpha^2\omega_\alpha^2
+[\coth(\beta\omega_\alpha/2)\cos(\omega_\alpha t)-\mathrm{i}\sin(\omega_\alpha t)].
 $$
+For a continuous bath with spectral density $J(\omega)$, this discrete sum is replaced by an integral over $\omega$. 
 
-Then the BCF is given by:
+### Stochastic phase algorithm (SPA)
+SPA starts from a representation of a single local vibronic environment whose scalar BCF is $c(t)$. This representation may be the original set of physical bath modes or a compressed auxiliary bath obtained from existing bath-compression methods. We write both cases in a unified form using $n_{\text{b}}$ bath modes, a bath energy matrix $K$, a damping matrix $\Gamma$, and a coupling vector $ \epsilon$. For an uncompressed harmonic bath, $K_{kl}=\omega_k\delta_{kl}$ ($k,l\in[1,n_{\text{b}}]$), $\Gamma=0$, and $\epsilon_k=g_k\omega_k$. For a compressed coupled-Lindblad bath, $K$ is generally not diagonal. $K$, $\Gamma$, and $\epsilon$ are optimized so that 
+$c(t)=\epsilon^\dagger e^{(-iK-\Gamma)t}\epsilon$ for 
+$0\leq t\leq \tau$
 
+ 
+SPA deals with an extended system with $N_{\text{s}}$ sites and $N_{\text{s}}$ such local baths. SPA replaces the $N_{\text{s}}$ local baths with $R$ independent copies of the local bath and defines the SPA total Hamiltonian 
+$\hat H_{\text{r}}^{(R)} = \hat H_{\text{s}}+ \hat H_{\text{b,r}}^{(R)}  + \hat H_{\text{sb,r}}^{(R)}$.
+The reduced bath Hamiltonian is $\hat H_{\text{b,r}}^{(R)}=\sum_{a=1}^{R}\sum_{k,l=1}^{n_{\text {b}}} K_{kl}\hat b_{a,k}^\dagger \hat b_{a,l}$, where $\hat b_{a,k}^\dagger$ creates an excitation in mode $k$ associated with the global bath $a$. 
+The reduced system-bath coupling Hamiltonian is
 $$
-C_{jj^{\prime}}(t)=\sum_{k}g_{k}g_{k}^{*}
-e^{i(\phi_{jk}-\phi_{j^{\prime}k})}c_{k}(t),
+\hat H_{\text{sb, r}}^{(R)}
+= \sum_{i=1}^{N_{\text{s}}} |i\rangle\langle i|  \otimes
+\sum_{a=1}^{R}\sum_{k=1}^{n_{\text b}}
+\frac{\epsilon_k}{\sqrt R}
+\left(
+r_i^{(a)} \hat b_{a,k}^\dagger + r_i^{(a)*} \hat b_{a,k}
+\right).
 $$
+The stochastic phase factor $r_i^{(a)}=\mathrm e^{i\theta_i^{(a)}}$ is sampled at each site $i$ and for each bath channel $a$, with $\theta_i^{(a)}$ uniformly distributed in $[0,2\pi)$.  
+Because $\mathbb E_\theta[R^{-1}\sum_{a=1}^{R}r_i^{(a)}r_j^{(a)*}]=\delta_{ij}$, the averaged BCF of the reduced system satisfies 
+$\mathbb E_\theta\!\left[C_{ij}^{(R)}(t)\right]
+= c(t)\delta_{ij}$, and thus reproduces the original BCFs without cross-site correlations.
 
-where $c_{k}(t)$ corresponds to the k-th mode of the bath. This
-$C_{jj^{\prime}}(t)$ is not diagonal.
-
-To make it diagonal, draw $\phi_{jk}$ as random numbers uniformly distributed in
-$[0,2\pi)$. Then:
-
+The quantum dynamics in SPA is governed by the Lindblad equation $\dot{\rho}=-\mathrm i [\hat H_{\text{r}}^{(R)},\rho] + \mathcal D^{(R)}(\rho)$, where 
 $$
-\mathbb{E}(C_{jj^{\prime}}(t))
-=\sum_{k}g_{k}g_{k}^{*}
-\mathbb{E}(e^{i(\phi_{jk}-\phi_{j^{\prime}k})})c_{k}(t)
-=\sum_{k}g_{k}g_{k}^{*}c_{k}(t)\delta_{jj^{\prime}}.
+    \mathcal D^{(R)}(\rho) = \sum_{a=1}^{R}\sum_{k,l=1}^{n_{\text r}}\Gamma_{kl}\left(2\hat b_{a,k}\rho \hat b_{a,l}^\dagger - \{\hat b_{a,l}^\dagger \hat b_{a,k},\rho\}\right).
 $$
+In the coupled-Lindblad-mode convention, $\Gamma$ differs by a factor of two from the standard Lindblad convention, so that $c(t)=g^\dagger e^{-iHt-\Gamma t}g$ contains no additional factor of two in the damping term.
 
-### Coupled Lindbladian case
+When $\Gamma=0$, the dissipator vanishes and the dynamics reduce to ordinary unitary evolution. 
 
-In the coupled Lindbladian case, we have:
-
-$$
-\begin{aligned}
-\partial_{t}\hat{\rho}
-&= -i[\hat{H}_{S}+\hat{H}_{B}+\hat{H}_{SB},\hat{\rho}] \\
-&\quad + \sum_{k,k^{\prime}}\Gamma_{kk^{\prime}}
-\left(2\hat{b}_{k}\hat{\rho}_{k^{\prime}}^{\dagger}
--\{\hat{b}_{k^{\prime}}^{\dagger}\hat{b}_{k},\hat{\rho}\}\right).
-\end{aligned}
-$$
-
-$$
-\hat{H}_{B}=\sum_{k,k^{\prime}}h_{kk^{\prime}}
-\hat{b}_{k}^{\dagger}\hat{b}_{k^{\prime}},
-$$
-
-and
-
-$$
-\hat{H}_{SB}=\sum_{j=1}^{n}\sum_{k=1}^{N}|j\rangle\langle j|\otimes
-(g_{k}e^{i\phi_{j}}\hat{b}_{k}
-+g_{k}^{*}e^{-i\phi_{j}^{*}}\hat{b}_{k}^{\dagger}).
-$$
-
-where again, $\phi_{j}$ and $\phi_{j^{\prime}}$ are random numbers uniformly
-distributed in $[0,2\pi)$. Then:
-
-$$
-C_{jj^{\prime}}(t)
-=g^{\dagger}e^{(-ih-\Gamma)t}ge^{i(\phi_{j}-\phi_{j^{\prime}})}.
-$$
-
-Taking expectation, we have:
-
-$$
-\mathbb{E}(C_{jj^{\prime}}(t))
-=g^{\dagger}e^{(-ih-\Gamma)t}g
-\mathbb{E}(e^{i(\phi_{j}-\phi_{j^{\prime}})})
-=g^{\dagger}e^{(-ih-\Gamma)t}g\delta_{jj^{\prime}}.
-$$
-
-In practice, we will use diagonal dissipation. So $\Gamma$ is a diagonal matrix.
 
 ## Example: Carrier transport in Rubrene crystal
 

@@ -36,7 +36,7 @@ if __name__ == "__main__":
     ln_fgr, = ax.plot(ref_temp, ref_fgr, 'o-', label="FGR", color='tab:blue')
     ln_diqcd, = ax.plot(ref_temp, ref_diqcd, 'o-', label="DIQCD", color='tab:purple')
     ln_spoc, = ax.plot(sim_temp, sim_mobility, '*--', label='SPOC', markersize=13, color='tab:orange')
-    ln_dmrg, = ax.plot(ref_temp, ref_dmrg, 'o-', label="TD-DMRG", color='black', markersize=8, linewidth=0, markerfacecolor='none')
+    ln_dmrg, = ax.plot(ref_temp, ref_dmrg, 'o-', label="TD-DMRG", color='black', markersize=8, linewidth=2, markerfacecolor='none')
 
     # Group 1: Ehrenfest, FGR, Boltzmann (legend 1, center left, a little to the right)
     group1_lines = [ln_ehrenfest, ln_fgr, ln_boltzmann]
@@ -48,6 +48,7 @@ if __name__ == "__main__":
 
     # Group 2: DIQCD, SPOC, TD-DMRG (legend 2, lower left)
     group2_lines = [ln_diqcd, ln_spoc, ln_dmrg]
+    # group2_lines = [ln_diqcd, ln_dmrg]
     group2_labels = [l.get_label() for l in group2_lines]
     legend2 = ax.legend(group2_lines, group2_labels, frameon=False, fontsize=13, ncol=1, loc='lower left')
 

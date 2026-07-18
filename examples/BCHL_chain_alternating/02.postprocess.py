@@ -39,7 +39,7 @@ if __name__ == "__main__":
     ## load the data from the simulation
     batch_size = 8
     nrun = 16
-    boson_dims = [5, 5, 5, 5, 5, 5]
+    boson_dims = [5, 4, 4, 4, 4, 4]
     boson_dim_str = ''.join([str(dim) for dim in boson_dims])
     populations_list = []
     for runid in range(nrun):

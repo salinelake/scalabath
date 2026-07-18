@@ -341,6 +341,63 @@ def test_coupled_lindblad_trajectory_accepts_full_bath_hamiltonian() -> None:
     np.testing.assert_allclose(np.asarray(state), np.asarray(expected), atol=1e-12)
 
 
+def test_coupled_lindblad_grouped_bath_matches_full_bath() -> None:
+    annihilation = jnp.asarray([[0.0, 1.0], [0.0, 0.0]], dtype=jnp.complex128)
+    creation = adjoint(annihilation)
+    number = creation @ annihilation
+    identity = jnp.eye(2, dtype=jnp.complex128)
+    group_hamiltonian = (
+        0.2 * compose([number, identity])
+        + 0.35 * compose([identity, number])
+        + 0.07 * (compose([creation, annihilation]) + compose([annihilation, creation]))
+    )
+    group_identity = jnp.eye(4, dtype=jnp.complex128)
+    full_hamiltonian = compose([group_hamiltonian, group_identity]) + compose(
+        [group_identity, group_hamiltonian]
+    )
+    jump_operators = [
+        jnp.sqrt(jnp.asarray(rate, dtype=jnp.complex128)) * annihilation
+        for rate in (0.1, 0.2, 0.1, 0.2)
+    ]
+    initial = jnp.zeros((1, 1, 2, 2, 2, 2), dtype=jnp.complex128)
+    initial = initial.at[0, 0, 1, 0, 0, 1].set(1.0)
+
+    grouped = CoupledLindbladTrajectorySimulation(
+        1,
+        (2, 2, 2, 2),
+        0.13,
+        bath_hamiltonian_groups=[group_hamiltonian, group_hamiltonian],
+        bath_mode_groups=[(0, 1), (2, 3)],
+        jump_operators=jump_operators,
+        dtype=jnp.complex128,
+    )
+    full = CoupledLindbladTrajectorySimulation(
+        1,
+        (2, 2, 2, 2),
+        0.13,
+        bath_hamiltonian=full_hamiltonian,
+        jump_operators=jump_operators,
+        dtype=jnp.complex128,
+    )
+    grouped.state = initial
+    full.state = initial
+
+    def no_jump_threshold() -> jax.Array:
+        return jnp.asarray([-1.0], dtype=jnp.float32)
+
+    grouped._sample_thresholds = no_jump_threshold
+    full._sample_thresholds = no_jump_threshold
+
+    grouped_state = grouped.step()
+    full_state = full.step()
+
+    np.testing.assert_allclose(
+        np.asarray(grouped_state),
+        np.asarray(full_state),
+        atol=1e-12,
+    )
+
+
 def test_coupled_lindblad_trajectory_prepares_effective_bath_hamiltonians() -> None:
     annihilation = jnp.asarray([[0, 1], [0, 0]], dtype=jnp.complex128)
     bath_hamiltonian = jnp.diag(jnp.asarray([0.0, 0.3], dtype=jnp.complex128))

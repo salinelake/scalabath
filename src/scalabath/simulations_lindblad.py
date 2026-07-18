@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from functools import partial
+from math import prod
 from typing import Any
 
 import jax
@@ -13,7 +15,9 @@ from jax import Array
 from scalabath.operators_groups import OperatorGroup
 from scalabath.simulations_unitary import (
     SystemBathUnitarySimulation,
+    _apply_axis_operator,
     _apply_axis_single,
+    _apply_system_mode_coupling,
     _as_local_matrix,
     _as_operator_matrix,
     _matrix_exponential,
@@ -23,6 +27,42 @@ from scalabath.simulations_unitary import (
 )
 from scalabath.systems import DensityMatrixEnsemble
 from scalabath.utilities import ABAd, adjoint, compose, positive_int
+
+
+def _apply_bath_group_operator(
+    state: Array,
+    operator: Array,
+    mode_indices: tuple[int, ...],
+) -> Array:
+    """Apply an operator to a selected group of bath tensor axes."""
+
+    source_axes = tuple(mode_index + 2 for mode_index in mode_indices)
+    grouped_axes = tuple(range(1, len(mode_indices) + 1))
+    moved = jnp.moveaxis(state, source_axes, grouped_axes)
+    batch_size = moved.shape[0]
+    group_dim = prod(moved.shape[1 : len(mode_indices) + 1])
+    matrix = moved.reshape(batch_size, group_dim, -1)
+    out = operator @ matrix
+    restored = out.reshape(moved.shape)
+    return jnp.moveaxis(restored, grouped_axes, source_axes)
+
+
+@partial(jax.jit, static_argnames=("bath_mode_groups",))
+def _system_bath_deterministic_trajectory_step_with_grouped_bath(
+    state: Array,
+    system_full: Array,
+    bath_full_by_group: tuple[Array, ...],
+    bath_mode_groups: tuple[tuple[int, ...], ...],
+    system_bath_full: tuple[Array, ...],
+) -> Array:
+    """Apply one trajectory step with independently propagating bath groups."""
+
+    state = _apply_axis_operator(state, system_full, 1)
+    for operator, mode_indices in zip(bath_full_by_group, bath_mode_groups, strict=True):
+        state = _apply_bath_group_operator(state, operator, mode_indices)
+    for mode_index, operator in enumerate(system_bath_full):
+        state = _apply_system_mode_coupling(state, operator, mode_index)
+    return state
 
 
 @jax.jit
@@ -229,6 +269,8 @@ class CoupledLindbladTrajectorySimulation:
         system_hamiltonian: Any | None = None,
         bath_hamiltonian: Any | None = None,
         bath_hamiltonians: Sequence[Any] | None = None,
+        bath_hamiltonian_groups: Sequence[Any] | None = None,
+        bath_mode_groups: Sequence[Sequence[int]] | None = None,
         system_bath_hamiltonians: Sequence[Any] | None = None,
         jump_operators: Sequence[Any] | None = None,
         key: Array | None = None,
@@ -246,14 +288,32 @@ class CoupledLindbladTrajectorySimulation:
             bath_hamiltonian: The total bath Hamiltonian, for all modes.
             bath_hamiltonians: A list of bath Hamiltonians, one for each mode.
                 This is used when the bath Hamiltonian is diagonal.
+            bath_hamiltonian_groups: Hamiltonian matrices for independent groups
+                of coupled bath modes. Each matrix acts on the tensor product of
+                the corresponding entry in ``bath_mode_groups``.
+            bath_mode_groups: Mode-index groups associated with
+                ``bath_hamiltonian_groups``. The groups must partition all modes.
             system_bath_hamiltonians: The system-bath Hamiltonians, one for each mode.
             jump_operators: The jump operators, one for each mode.
             key: The random key.
             dtype: The data type.
         """
 
-        if bath_hamiltonian is not None and bath_hamiltonians is not None:
-            raise ValueError("provide either bath_hamiltonian or bath_hamiltonians, not both")
+        grouped_arguments_match = (bath_hamiltonian_groups is None) == (bath_mode_groups is None)
+        if not grouped_arguments_match:
+            raise ValueError(
+                "bath_hamiltonian_groups and bath_mode_groups must be provided together"
+            )
+        bath_inputs = (
+            bath_hamiltonian is not None,
+            bath_hamiltonians is not None,
+            bath_hamiltonian_groups is not None,
+        )
+        if sum(bath_inputs) > 1:
+            raise ValueError(
+                "provide only one of bath_hamiltonian, bath_hamiltonians, or "
+                "bath_hamiltonian_groups"
+            )
         ## initialize the unitary part. If the bath Hamiltonian is not diagonal,
         ## we set the bath hamiltonian to be zero in the unitary part.
         self.unitary_part = SystemBathUnitarySimulation(
@@ -263,7 +323,11 @@ class CoupledLindbladTrajectorySimulation:
             boson_freqs=boson_freqs,
             batch_size=batch_size,
             system_hamiltonian=system_hamiltonian,
-            bath_hamiltonians=bath_hamiltonians if bath_hamiltonian is None else None,
+            bath_hamiltonians=(
+                bath_hamiltonians
+                if bath_hamiltonian is None and bath_hamiltonian_groups is None
+                else None
+            ),
             system_bath_hamiltonians=system_bath_hamiltonians,
             dtype=dtype,
         )
@@ -276,10 +340,12 @@ class CoupledLindbladTrajectorySimulation:
         self.bath_dim = self.unitary_part.bath_dim
         self.batch_size = self.unitary_part.batch_size
         self.dt = self.unitary_part.dt
-        if bath_hamiltonian is None:
-            self.bath_hamiltonian = None
-            self._bath_full = None
-        else:
+        self.bath_hamiltonian = None
+        self.bath_hamiltonian_groups: tuple[Array, ...] | None = None
+        self.bath_mode_groups: tuple[tuple[int, ...], ...] | None = None
+        self._bath_full = None
+        self._bath_full_by_group: tuple[Array, ...] | None = None
+        if bath_hamiltonian is not None:
             self.bath_hamiltonian = _as_local_matrix(
                 bath_hamiltonian,
                 self.bath_dim,
@@ -287,7 +353,26 @@ class CoupledLindbladTrajectorySimulation:
                 self.dtype,
                 "bath_hamiltonian",
             )
-            self._bath_full = None
+        elif bath_hamiltonian_groups is not None and bath_mode_groups is not None:
+            if len(bath_hamiltonian_groups) != len(bath_mode_groups):
+                raise ValueError(
+                    "bath_hamiltonian_groups and bath_mode_groups must have the same length"
+                )
+            self.bath_mode_groups = self._validated_bath_mode_groups(bath_mode_groups)
+            self.bath_hamiltonian_groups = tuple(
+                _as_local_matrix(
+                    matrix,
+                    prod(self.boson_dims[index] for index in mode_group),
+                    self.batch_size,
+                    self.dtype,
+                    "bath_hamiltonian_group",
+                )
+                for matrix, mode_group in zip(
+                    bath_hamiltonian_groups,
+                    self.bath_mode_groups,
+                    strict=True,
+                )
+            )
         self.key = jax.random.PRNGKey(0) if key is None else key
         self.thresholds = jnp.zeros((self.batch_size,), dtype=jnp.float32)
         if jump_operators is None:
@@ -301,10 +386,43 @@ class CoupledLindbladTrajectorySimulation:
             )
         self._prepare_effective_bath_hamiltonian()
 
+    def _validated_bath_mode_groups(
+        self,
+        bath_mode_groups: Sequence[Sequence[int]],
+    ) -> tuple[tuple[int, ...], ...]:
+        groups = tuple(tuple(int(index) for index in group) for group in bath_mode_groups)
+        if not groups or any(not group for group in groups):
+            raise ValueError("bath_mode_groups must contain non-empty groups")
+
+        flattened = tuple(index for group in groups for index in group)
+        if any(index < 0 or index >= self.nmodes for index in flattened):
+            raise ValueError("bath_mode_groups contains an out-of-range mode index")
+        if sorted(flattened) != list(range(self.nmodes)):
+            raise ValueError("bath_mode_groups must partition all bosonic modes exactly once")
+        return groups
+
     def _embed_bath_local_operator(self, operator: Array, mode_index: int) -> Array:
         bath_operators = []
         for index, dim in enumerate(self.boson_dims):
             if index == mode_index:
+                bath_operators.append(operator)
+            elif operator.ndim == 2:
+                bath_operators.append(jnp.eye(dim, dtype=self.dtype))
+            else:
+                identity = jnp.eye(dim, dtype=self.dtype)
+                bath_operators.append(jnp.broadcast_to(identity, (self.batch_size, dim, dim)))
+        return compose(bath_operators)
+
+    def _embed_bath_group_local_operator(
+        self,
+        operator: Array,
+        mode_index: int,
+        mode_group: tuple[int, ...],
+    ) -> Array:
+        bath_operators = []
+        for grouped_mode_index in mode_group:
+            dim = self.boson_dims[grouped_mode_index]
+            if grouped_mode_index == mode_index:
                 bath_operators.append(operator)
             elif operator.ndim == 2:
                 bath_operators.append(jnp.eye(dim, dtype=self.dtype))
@@ -319,7 +437,27 @@ class CoupledLindbladTrajectorySimulation:
         loss_terms = [
             adjoint(jump_operator) @ jump_operator for jump_operator in self.jump_operators
         ]
-        if self.bath_hamiltonian is None:
+        if self.bath_hamiltonian_groups is not None:
+            assert self.bath_mode_groups is not None
+            effective_hamiltonians = list(self.bath_hamiltonian_groups)
+            group_by_mode = {
+                mode_index: group_index
+                for group_index, mode_group in enumerate(self.bath_mode_groups)
+                for mode_index in mode_group
+            }
+            for mode_index, loss_term in enumerate(loss_terms):
+                group_index = group_by_mode[mode_index]
+                mode_group = self.bath_mode_groups[group_index]
+                effective_hamiltonians[group_index] = effective_hamiltonians[
+                    group_index
+                ] - 0.5j * self._embed_bath_group_local_operator(
+                    loss_term,
+                    mode_index,
+                    mode_group,
+                )
+            self.bath_hamiltonian_groups = tuple(effective_hamiltonians)
+            self._bath_full_by_group = None
+        elif self.bath_hamiltonian is None:
             bath_hamiltonians = list(self.unitary_part.bath_hamiltonians)
             for mode_index, loss_term in enumerate(loss_terms):
                 bath_hamiltonians[mode_index] = bath_hamiltonians[mode_index] - 0.5j * loss_term
@@ -341,6 +479,11 @@ class CoupledLindbladTrajectorySimulation:
     def _prepare_trajectory_propagators(self) -> None:
         if not self.unitary_part._propagators_ready:
             self.unitary_part._prepare_propagators()
+        if self.bath_hamiltonian_groups is not None and self._bath_full_by_group is None:
+            self._bath_full_by_group = tuple(
+                _matrix_exponential(hamiltonian, -1j * self.dt)
+                for hamiltonian in self.bath_hamiltonian_groups
+            )
         ## we need to handle the non-diagonal bath Hamiltonian here because the
         ## unitary part does not support it.
         if self.bath_hamiltonian is not None and self._bath_full is None:
@@ -394,7 +537,17 @@ class CoupledLindbladTrajectorySimulation:
         self._prepare_trajectory_propagators()
         state = self.state
         for _ in range(n_steps):
-            if self.bath_hamiltonian is None:
+            if self.bath_hamiltonian_groups is not None:
+                assert self._bath_full_by_group is not None
+                assert self.bath_mode_groups is not None
+                state = _system_bath_deterministic_trajectory_step_with_grouped_bath(
+                    state,
+                    self.unitary_part._matrix_system_full,
+                    self._bath_full_by_group,
+                    self.bath_mode_groups,
+                    self.unitary_part._system_bath_full,
+                )
+            elif self.bath_hamiltonian is None:
                 state = _system_bath_deterministic_trajectory_step(
                     state,
                     self.unitary_part._matrix_system_full,
