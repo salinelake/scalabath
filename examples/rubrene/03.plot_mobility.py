@@ -12,20 +12,20 @@ mpl.rcParams['lines.linewidth'] = 2
 
 if __name__ == "__main__":
     ## load our results
-    our_results = np.loadtxt("mobility_our_results.csv", delimiter=',')
+    our_results = np.loadtxt("mobility_SPA.csv", delimiter=',')
     sim_temp = our_results[:, 0]
     sim_mobility = our_results[:, 1]
 
     ## load mobility reference data
-    mobility_ref = np.loadtxt("mobility.csv", delimiter=',')
+    mobility_ref = np.loadtxt("mobility_JPCL.csv", delimiter=',')
     ref_temp = mobility_ref[:, 0]
     ref_dmrg = mobility_ref[:, 1] 
     ref_fgr = mobility_ref[:, 2]
     ref_boltzmann = mobility_ref[:, 3]
 
-    diqcd_ref = np.loadtxt("../rubrene_semiclassical/03.simulate_diqcd/mobility.csv", delimiter=',')
+    diqcd_ref = np.loadtxt("mobility_DIQCD.csv", delimiter=',')
     ref_diqcd = diqcd_ref[:, 1]
-    ehrenfest_ref = np.loadtxt("../rubrene_semiclassical/00.simulate_ehrenfest/mobility.csv", delimiter=',')
+    ehrenfest_ref = np.loadtxt("mobility_Ehrenfest.csv", delimiter=',')
     ref_ehrenfest = ehrenfest_ref[:, 1]
 
     ## plot the results

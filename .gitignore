@@ -4,13 +4,16 @@ __pycache__/
 *$py.class
 .DS_Store
 .jax_cache/
-
+*.png
+*.slurm
+*.npz
 # C extensions
 *.so
 
 # Distribution / packaging
 .Python
 build/
+scratch/
 develop-eggs/
 dist/
 downloads/
