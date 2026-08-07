@@ -13,6 +13,7 @@ from scalabath.simulations_lindblad import (
     CoupledLindbladTrajectorySimulation,
     LindbladSimulation,
 )
+from scalabath.simulations_tcl2 import TCL2Simulation
 from scalabath.simulations_unitary import (
     SystemBathUnitarySimulation,
     UnitarySimulation,
@@ -39,6 +40,7 @@ __all__ = [
     "PureStatesEnsemble",
     "SpinOperatorGroup",
     "SystemBathUnitarySimulation",
+    "TCL2Simulation",
     "TensorProductDensityMatrixEnsemble",
     "TensorProductPureStatesEnsemble",
     "TightBindingChainOperatorGroup",

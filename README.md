@@ -1,9 +1,9 @@
 # scalabath
 
 `scalabath` is a JAX-based Python package for scalable simulation of quantum dynamics on lattice systems coupled to bosonic environments. It provides dense
-Schrodinger-equation and Lindblad master-equation solvers, tensor-product
-system-bath evolution, and operator builders for bosons, two-level systems, and
-tight-binding lattices.
+Schrodinger-equation and Lindblad master-equation solvers, finite-time
+nonsecular TCL2 density-matrix evolution, tensor-product system-bath evolution,
+and operator builders for bosons, two-level systems, and tight-binding lattices.
 
 ## Installation
 
@@ -43,6 +43,8 @@ python -m pip install -e .
 - JAX-backed state containers for batched pure-state and density-matrix
   ensembles.
 - Dense unitary and Lindblad simulation classes with JIT-compiled step kernels.
+- A JIT-compiled, nonsecular TCL2 solver for bath correlations represented as
+  sums of complex exponentials.
 - Tensor-product system-bath evolution for states shaped as
   `(batch, system_dim, *boson_dims)`, avoiding construction of one full dense
   Hamiltonian for every system-bath term.
@@ -64,6 +66,8 @@ python -m pip install -e .
   tensorized system-bath unitary evolution.
 - `src/scalabath/simulations_lindblad.py`: dense Lindblad evolution and
   coupled Lindblad trajectory evolution.
+- `src/scalabath/simulations_tcl2.py`: nonsecular, time-local second-order
+  density-matrix evolution with exponentially decomposed bath correlations.
 - `src/scalabath/simulations.py`: compatibility re-exports for the simulation
   classes.
 - `src/scalabath/utilities.py`: shared linear algebra helpers such as adjoints,

@@ -39,7 +39,7 @@ if __name__ == "__main__":
     ## load the data from the simulation
     batch_size = 8
     nrun = 16
-    boson_dims = [5, 4, 4, 4, 4, 4]
+    boson_dims = [5, 5, 5, 5, 5, 5]
     boson_dim_str = ''.join([str(dim) for dim in boson_dims])
     populations_list = []
     for runid in range(nrun):
@@ -57,16 +57,16 @@ if __name__ == "__main__":
     
     titles = ["Site 10", "Site 11", "Site 9", "Site 8"]
     fig, ax = plt.subplots(2, 2, figsize=(7, 5))
-    ax[0, 0].plot(time_fs, populations_mean[:, center_site], label='SPOC')
+    ax[0, 0].plot(time_fs, populations_mean[:, center_site], label='SPA')
     ax[0, 0].fill_between(time_fs, populations_mean[:, center_site] - populations_sem[:, center_site], populations_mean[:, center_site] + populations_sem[:, center_site], color='C0', alpha=0.25)
     ax[0, 0].plot(ref_s10[:, 0], ref_s10[:, 1], linestyle='--', color='tab:orange', label='Ref')
-    ax[0, 1].plot(time_fs, populations_mean[:, center_site + 1], label='SPOC')
+    ax[0, 1].plot(time_fs, populations_mean[:, center_site + 1], label='SPA')
     ax[0, 1].fill_between(time_fs, populations_mean[:, center_site + 1] - populations_sem[:, center_site + 1], populations_mean[:, center_site + 1] + populations_sem[:, center_site + 1], color='C0', alpha=0.25)
     ax[0, 1].plot(ref_s11[:, 0], ref_s11[:, 1], linestyle='--', color='tab:orange', label='Ref')
-    ax[1, 0].plot(time_fs, populations_mean[:, center_site -1], label='SPOC')
+    ax[1, 0].plot(time_fs, populations_mean[:, center_site -1], label='SPA')
     ax[1, 0].fill_between(time_fs, populations_mean[:, center_site -1] - populations_sem[:, center_site -1], populations_mean[:, center_site -1] + populations_sem[:, center_site -1], color='C0', alpha=0.25)
     ax[1, 0].plot(ref_s9[:, 0], ref_s9[:, 1], linestyle='--', color='tab:orange', label='Ref')
-    ax[1, 1].plot(time_fs, populations_mean[:, center_site -2], label='SPOC')
+    ax[1, 1].plot(time_fs, populations_mean[:, center_site -2], label='SPA')
     ax[1, 1].fill_between(time_fs, populations_mean[:, center_site -2] - populations_sem[:, center_site -2], populations_mean[:, center_site -2] + populations_sem[:, center_site -2], color='C0', alpha=0.25)
     ax[1, 1].plot(ref_s8[:, 0], ref_s8[:, 1], linestyle='--', color='tab:orange', label='Ref')
     for idx, _ax in enumerate(ax.flat):
@@ -95,10 +95,10 @@ if __name__ == "__main__":
     for i, idx in enumerate(pop_indices):
         # The main population curves
         # l = ax.plot(time_fs, populations_mean[:, idx], linestyle=":", color=sim_colors[i], linewidth=3, alpha=0.8, label=f"This work ({shift_labels[i]})")[0]
-        l = ax.plot(time_fs, populations_mean[:, idx], linestyle="-", linewidth=0, marker='o', markersize=3, color=sim_colors[i], alpha=0.8, label=f"SPOC ({shift_labels[i]})")[0]
+        l = ax.plot(time_fs, populations_mean[:, idx], linestyle="-", linewidth=0, marker='o', markersize=3, color=sim_colors[i], alpha=0.8, label=f"SPA ({shift_labels[i]})")[0]
 
         lines.append(l)
-        labels.append(f"SPOC ({shift_labels[i]})")
+        labels.append(f"SPA ({shift_labels[i]})")
 
     # Plot references
     for i, (ref, label) in enumerate(zip(ref_pops, shift_labels)):
