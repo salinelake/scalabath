@@ -1,0 +1,27 @@
+:root {
+  --scalabath-blue: #165b7a;
+  --scalabath-cyan: #2c9ab7;
+}
+
+.wy-side-nav-search,
+.wy-nav-top {
+  background: var(--scalabath-blue);
+}
+
+.wy-nav-content {
+  max-width: 980px;
+}
+
+.rst-content a,
+.rst-content a:visited {
+  color: var(--scalabath-blue);
+}
+
+.rst-content code.literal {
+  color: #185c74;
+}
+
+.rst-content table.docutils td,
+.rst-content table.docutils th {
+  white-space: normal;
+}

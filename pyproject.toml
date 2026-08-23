@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 authors = [
   { name = "Pinchen Xie", email = "pinchenxie@lbl.gov" },
+  { name = "Zhen Huang" },
 ]
 keywords = [
   "open quantum systems",
@@ -49,12 +50,13 @@ gpu-cuda12 = [
   "jax[cuda12]>=0.4.30",
 ]
 docs = [
-  "mkdocs>=1.6",
-  "mkdocs-material>=9.5",
+  "sphinx>=8.2,<9",
+  "sphinx-rtd-theme>=3.0,<4",
 ]
 
 [project.urls]
 Homepage = "https://github.com/salinelake/scalabath"
+Documentation = "https://scalabath.readthedocs.io/"
 Repository = "https://github.com/salinelake/scalabath"
 Issues = "https://github.com/salinelake/scalabath/issues"
 

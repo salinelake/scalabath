@@ -1,221 +1,181 @@
 # scalabath
 
-`scalabath` is a JAX-based Python package for scalable simulation of quantum dynamics on lattice systems coupled to bosonic environments. It provides dense
-Schrodinger-equation and Lindblad master-equation solvers, finite-time
-nonsecular TCL2 density-matrix evolution, tensor-product system-bath evolution,
-and operator builders for bosons, two-level systems, and tight-binding lattices.
+[![Documentation Status](https://readthedocs.org/projects/scalabath/badge/?version=latest)](https://scalabath.readthedocs.io/en/latest/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+`scalabath` is a JAX-based Python package for simulating open quantum dynamics
+on lattice systems. It provides the simulation components used by the
+stochastic phase algorithm (SPA), which replaces many site-resolved bosonic
+environments with a small number of shared baths carrying stochastic,
+site-dependent phases.
+
+The package accompanies the paper *Scalable simulation of non-Markovian
+quantum transport by stochastic-phase bath reduction*. In the setting studied
+there—single-quasiparticle transport with identical, independent local
+environments—SPA restores the target two-point bath correlations by phase
+averaging while avoiding one explicit bath copy per lattice site.
+
+## Highlights
+
+- Dense Schrödinger, Lindblad, and finite-time nonsecular TCL2 evolution.
+- Tensorized system–bath state propagation without constructing the complete
+  system-plus-bath Hamiltonian for every local term.
+- Stochastic Lindblad trajectories for coupled pseudomode baths.
+- Batched simulations with complex, realization-dependent operator
+  prefactors.
+- Optional JAX `NamedSharding` for distributing the system axis across GPUs.
+- Operator builders for bosons, two-level systems, 1D chains, 2D lattices, and
+  composed Hilbert spaces.
 
 ## Installation
 
-The package requires Python 3.11 or newer. For CPU development from a source
-checkout:
+`scalabath` requires Python 3.11 or newer. To install the released source on a
+CPU machine:
 
 ```bash
 git clone https://github.com/salinelake/scalabath.git
 cd scalabath
 conda create -n scalabath python=3.11 -y
 conda activate scalabath
-python -m pip install -U pip
-python -m pip install -e ".[dev]"
+python -m pip install --upgrade pip
+python -m pip install .
 ```
 
-For Linux systems with NVIDIA GPUs, install a CUDA-enabled JAX wheel through one
-of the project extras. Choose the CUDA extra that matches the machine:
+For development, including tests and documentation:
 
 ```bash
-conda create -n scalabath python=3.11 -y
-conda activate scalabath
-python -m pip install -U pip
-python -m pip install -e ".[dev,gpu-cuda13]"
-
-# CUDA 12 systems can use:
-# python -m pip install -e ".[dev,gpu-cuda12]"
+python -m pip install -e ".[dev,docs]"
 ```
 
-For a runtime-only editable install, omit the `dev` extra:
+On Linux systems with NVIDIA GPUs, select the extra matching the installed CUDA
+runtime:
 
 ```bash
-python -m pip install -e .
+python -m pip install -e ".[gpu-cuda13]"
+
+# CUDA 12 alternative:
+# python -m pip install -e ".[gpu-cuda12]"
 ```
 
-## Highlighted features
+JAX compilation and device selection are controlled by JAX. Enable 64-bit
+arrays before starting Python when a calculation requires them:
 
-- JAX-backed state containers for batched pure-state and density-matrix
-  ensembles.
-- Dense unitary and Lindblad simulation classes with JIT-compiled step kernels.
-- A JIT-compiled, nonsecular TCL2 solver for bath correlations represented as
-  sums of complex exponentials.
-- Tensor-product system-bath evolution for states shaped as
-  `(batch, system_dim, *boson_dims)`, avoiding construction of one full dense
-  Hamiltonian for every system-bath term.
-- Operator builders for bosonic modes, two-level systems, one-dimensional
-  tight-binding chains, two-dimensional tight-binding lattices, and composed
-  subsystem operators.
-- Batch-aware operator prefactors and random-phase system-bath couplings for
-  ensemble simulations.
+```bash
+export JAX_ENABLE_X64=1
+```
 
-## Code Structure
+## Quick start
 
-- `src/scalabath/systems.py`: pure-state and density-matrix ensemble
-  containers, including tensor-product layouts and reduced density matrices.
-- `src/scalabath/operators_base.py`: local boson, two-level-system, and
-  tight-binding operator matrices.
-- `src/scalabath/operators_groups.py`: static sums of many-body operators and
-  tensor products of subsystem operator groups.
-- `src/scalabath/simulations_unitary.py`: dense unitary evolution and
-  tensorized system-bath unitary evolution.
-- `src/scalabath/simulations_lindblad.py`: dense Lindblad evolution and
-  coupled Lindblad trajectory evolution.
-- `src/scalabath/simulations_tcl2.py`: nonsecular, time-local second-order
-  density-matrix evolution with exponentially decomposed bath correlations.
-- `src/scalabath/simulations.py`: compatibility re-exports for the simulation
-  classes.
-- `src/scalabath/utilities.py`: shared linear algebra helpers such as adjoints,
-  Kronecker products, traces, and expectation values.
-- `src/scalabath/constants.py`: physical constants and unit conversions used by
-  examples.
-- `examples/`: runnable model scripts.
-- `tests/`: unit tests for operators, state containers, simulation classes, and
-  utilities.
+The following example evolves a particle initially localized at the center of
+an open five-site chain:
 
-## Applications
+```python
+import jax.numpy as jnp
 
-One major application of the package is to simulate quantum transport in extended systems where the multi-site, multi-mode environment is replaced by a single
-multi-mode bosonic bath through random phase approximation.  We call this the stochastic phase algorithm (SPA).
+from scalabath import UnitarySimulation, tight_binding_1d
 
-### Quantum transport models
-We focus on quantum transport described by an $N_{\text{s}}$-site Holstein Hamiltonian, $\hat H=\hat H_{\text{s}}+\hat H_{\text{b}}+\hat H_{\text{sb}}$. 
-The tight-binding Hamiltonian is 
-$\hat H_{\text{s}}=\sum_{i=1}^{N_{\text{s}}}U_i |i\rangle\langle i|+\sum_{  i\neq j}^{N_{\text{s}}}V_{ij}|i\rangle\langle j|$, 
-where $|i\rangle$ denotes the tight-binding state on site-$i$, $U_i$ is the site energy, and $V_{ij}$ is the hopping amplitude. The connectivity of the tight-binding network is arbitrary.
-The vibronic environment of each site consists of $n$  bosonic modes, $\hat H_{\rm b}=\sum_{i=1}^{N_{\text{s}}}\sum_{\alpha=1}^{n}\omega_{\alpha}\hat b_{i\alpha}^\dagger \hat b_{i\alpha}$, where $\hat b_{i\alpha}^\dagger$ creates a vibronic excitation in mode $\alpha$ attached to site $i$. The system-bath coupling is local and diagonal,
-$$
-    \hat H_{\text{sb}}=\sum_{i=1}^{N_{\text{s}}}  |i\rangle\langle i| \otimes \sum_{\alpha=1}^{n}g_{\alpha}\omega_{\alpha}(\hat b_{i\alpha}^\dagger+\hat b_{i\alpha}),
-$$
-with dimensionless coupling $g_{\alpha}$.
-The local reorganization energy $\lambda=\sum_{\alpha=1}^{n}g_\alpha^2\omega_\alpha$ measures the energetic stabilization due to EVC. 
-The intermediate-coupling regime corresponds to $\lambda$ being of the same order as a typical hopping amplitude, so neither weak-coupling nor strong-coupling descriptions are reliable.
+lattice = tight_binding_1d(5, periodic=False)
+hamiltonian = -lattice.nearest_neighbor_hopping(amplitude=1.0)
 
-We assume the initial state is a tensor product of a system state $\rho_{\text{s}}(0)$ and a thermal environmental state $\rho_{\text{b},\beta}\propto\exp(-\beta \hat H_{\text{b}})$. We denote the reduced system density operator by $\rho_{\text{s}}(t)$. The environmental influence on $\rho_{\text{s}}(t)$ is encoded in the BCF $C_{ij}(t)$ between site-$i$ and $j$, which can be obtained from first-principles calculations or from vibronic spectral densities inferred from spectroscopic data. 
-For homogeneous Gaussian baths, $C(t)$ is diagonal. 
-$C_{ij}(t)=c(t)\delta_{ij}$, 
-with
-$$
-c(t)=\sum_{\alpha=1}^{n} g_\alpha^2\omega_\alpha^2
-[\coth(\beta\omega_\alpha/2)\cos(\omega_\alpha t)-\mathrm{i}\sin(\omega_\alpha t)].
-$$
-For a continuous bath with spectral density $J(\omega)$, this discrete sum is replaced by an integral over $\omega$. 
+simulation = UnitarySimulation(5, dt=0.05, hamiltonian=hamiltonian)
+initial_state = jnp.zeros(5, dtype=jnp.complex64).at[2].set(1.0)
+simulation.state = initial_state
 
-### Stochastic phase algorithm (SPA)
-SPA starts from a representation of a single local vibronic environment whose scalar BCF is $c(t)$. This representation may be the original set of physical bath modes or a compressed auxiliary bath obtained from existing bath-compression methods. We write both cases in a unified form using $n_{\text{b}}$ bath modes, a bath energy matrix $K$, a damping matrix $\Gamma$, and a coupling vector $ \epsilon$. For an uncompressed harmonic bath, $K_{kl}=\omega_k\delta_{kl}$ ($k,l\in[1,n_{\text{b}}]$), $\Gamma=0$, and $\epsilon_k=g_k\omega_k$. For a compressed coupled-Lindblad bath, $K$ is generally not diagonal. $K$, $\Gamma$, and $\epsilon$ are optimized so that 
-$c(t)=\epsilon^\dagger e^{(-iK-\Gamma)t}\epsilon$ for 
-$0\leq t\leq \tau$
+simulation.step(n_steps=20)
+populations = jnp.abs(simulation.state[0]) ** 2
+print(populations)
+```
 
- 
-SPA deals with an extended system with $N_{\text{s}}$ sites and $N_{\text{s}}$ such local baths. SPA replaces the $N_{\text{s}}$ local baths with $R$ independent copies of the local bath and defines the SPA total Hamiltonian 
-$\hat H_{\text{r}}^{(R)} = \hat H_{\text{s}}+ \hat H_{\text{b,r}}^{(R)}  + \hat H_{\text{sb,r}}^{(R)}$.
-The reduced bath Hamiltonian is $\hat H_{\text{b,r}}^{(R)}=\sum_{a=1}^{R}\sum_{k,l=1}^{n_{\text {b}}} K_{kl}\hat b_{a,k}^\dagger \hat b_{a,l}$, where $\hat b_{a,k}^\dagger$ creates an excitation in mode $k$ associated with the global bath $a$. 
-The reduced system-bath coupling Hamiltonian is
-$$
-\hat H_{\text{sb, r}}^{(R)}
-= \sum_{i=1}^{N_{\text{s}}} |i\rangle\langle i|  \otimes
-\sum_{a=1}^{R}\sum_{k=1}^{n_{\text b}}
-\frac{\epsilon_k}{\sqrt R}
-\left(
-r_i^{(a)} \hat b_{a,k}^\dagger + r_i^{(a)*} \hat b_{a,k}
-\right).
-$$
-The stochastic phase factor $r_i^{(a)}=\mathrm e^{i\theta_i^{(a)}}$ is sampled at each site $i$ and for each bath channel $a$, with $\theta_i^{(a)}$ uniformly distributed in $[0,2\pi)$.  
-Because $\mathbb E_\theta[R^{-1}\sum_{a=1}^{R}r_i^{(a)}r_j^{(a)*}]=\delta_{ij}$, the averaged BCF of the reduced system satisfies 
-$\mathbb E_\theta\!\left[C_{ij}^{(R)}(t)\right]
-= c(t)\delta_{ij}$, and thus reproduces the original BCFs without cross-site correlations.
+All state containers are batch-first. Dense pure states have shape
+`(batch, hilbert_dim)`, dense density matrices have shape
+`(batch, hilbert_dim, hilbert_dim)`, and tensorized system–bath states have
+shape `(batch, system_dim, *boson_dims)`.
 
-The quantum dynamics in SPA is governed by the Lindblad equation $\dot{\rho}=-\mathrm i [\hat H_{\text{r}}^{(R)},\rho] + \mathcal D^{(R)}(\rho)$, where 
-$$
-    \mathcal D^{(R)}(\rho) = \sum_{a=1}^{R}\sum_{k,l=1}^{n_{\text r}}\Gamma_{kl}\left(2\hat b_{a,k}\rho \hat b_{a,l}^\dagger - \{\hat b_{a,l}^\dagger \hat b_{a,k},\rho\}\right).
-$$
-In the coupled-Lindblad-mode convention, $\Gamma$ differs by a factor of two from the standard Lindblad convention, so that $c(t)=g^\dagger e^{-iHt-\Gamma t}g$ contains no additional factor of two in the damping term.
+## Choosing a solver
 
-When $\Gamma=0$, the dissipator vanishes and the dynamics reduce to ordinary unitary evolution. 
+| Solver | State representation | Intended use |
+| --- | --- | --- |
+| `UnitarySimulation` | Dense pure states | Exact dense unitary propagation of small Hilbert spaces |
+| `LindbladSimulation` | Dense density matrices | Small open systems in Lindblad form |
+| `TCL2Simulation` | Dense density matrices | Finite-time, nonsecular second-order reduced dynamics |
+| `SystemBathUnitarySimulation` | Tensorized pure states | Unitary system–bath dynamics and SPA with explicit modes |
+| `CoupledLindbladTrajectorySimulation` | Tensorized trajectories | SPA with damped or coupled pseudomodes |
 
+The tensorized solvers avoid dense operators spanning every bath mode, but the
+bath-state size still scales as the product of the bosonic cutoff dimensions.
+Converge the time step, every bosonic cutoff, trajectory/phase sample count,
+and—when using multiple shared bath copies—the copy count for the observable of
+interest.
 
-## Example: Carrier transport in Rubrene crystal
+## Examples
 
-The Rubrene example in `examples/rubrene` simulates carrier transport in a
-one-dimensional Holstein-type model. The system is a tight-binding chain, and
-the bath mode frequencies and reorganization energies are read from
-`coupling_const.csv`. The simulation samples thermal bath occupations, draws
-site-dependent random phases, evolves the tensor-product wavefunction with
-`SystemBathUnitarySimulation`, and saves site populations for postprocessing.
+Two end-to-end applications are included:
 
-The implemented Hamiltonian has the form:
+- [`examples/rubrene`](examples/rubrene) simulates carrier transport in a
+  one-dimensional Holstein model with a nine-mode molecular bath.
+- [`examples/BCHL_chain`](examples/BCHL_chain) simulates exciton population
+  dynamics in a 19-site bacteriochlorophyll chain coupled to compressed,
+  damped bosonic modes.
 
-$$
-\begin{aligned}
-\hat{H}
-&= J\sum_{j}\left(|j\rangle\langle j+1|
-+|j+1\rangle\langle j|\right) \\
-&\quad + \sum_{m}\omega_{m}\hat{b}_{m}^{\dagger}\hat{b}_{m} \\
-&\quad + \sum_{j,m}|j\rangle\langle j|\otimes g_{m}
-\left(e^{i\phi_{jm}}\hat{b}_{m}
-+e^{-i\phi_{jm}}\hat{b}_{m}^{\dagger}\right).
-\end{aligned}
-$$
-
-Run a small CPU smoke test from the example directory:
+For example, a small CPU smoke run of the Rubrene script is:
 
 ```bash
 cd examples/rubrene
 JAX_ENABLE_X64=1 python 01.main.py \
   --chain-length 8 \
   --num-modes 1 \
-  --sample-time-fs 2 \
-  --sample-period-fs 1 \
+  --boson-dims 2 \
+  --sample-time-fs 0.2 \
+  --sample-period-fs 0.1 \
   --batch-size 1 \
   --run-id 0
 ```
 
-A production-scale run matching the current postprocessing script uses the
-default Rubrene dimensions:
+The default example dimensions are research-scale calculations and may require
+a GPU and substantial memory. Start with reduced cutoffs and propagation times
+before launching production runs.
+
+## Documentation
+
+The full documentation is available at
+[scalabath.readthedocs.io](https://scalabath.readthedocs.io/en/latest/). It
+includes installation instructions, the SPA formulation, solver and sharding
+guides, reproducibility guidance, examples, and the complete Python API.
+
+To build it locally:
 
 ```bash
-cd examples/rubrene
-JAX_ENABLE_X64=1 python 01.main.py \
-  --temperature 300 \
-  --chain-length 150 \
-  --sample-time-fs 300 \
-  --sample-period-fs 1 \
-  --batch-size 5 \
-  --run-id 0
+python -m pip install -e ".[docs]"
+sphinx-build -M html docs docs/_build -W --keep-going
 ```
 
+Open `docs/_build/html/index.html` after the build completes.
 
-## Example: Exciton transport in bio-complex BCHL chain
+## Citation
 
-The BCHL chain example in `examples/BCHL_chain` simulates exciton transport in a one-dimensional BCHL chain. The system is a n-site tight-binding chain coupled to an effective bosonic bath. For BCHL, n=19. The number of bosonic modes is denoted by N. 
+If `scalabath` contributes to published work, please cite both the software
+release and the accompanying paper:
 
-The bath Hamiltonian is not diagonal and is given by:
-$$
-\hat{H}_{B}=\sum_{k,k^{\prime}}h_{kk^{\prime}}
-\hat{b}_{k}^{\dagger}\hat{b}_{k^{\prime}},
-$$
+> *Scalable simulation of non-Markovian quantum transport by stochastic-phase
+> bath reduction.*
 
-The system-bath coupling is given by the same form as the Rubrene example, but the coupling strengths and phases are different.
-$$
-\hat{H}_{SB}=\sum_{j=1}^{n}\sum_{k=1}^{N}|j\rangle\langle j|\otimes
-(g_{k}e^{i\phi_{j}}\hat{b}_{k}
-+g_{k}^{*}e^{-i\phi_{j}^{*}}\hat{b}_{k}^{\dagger}).
-$$
+The arXiv identifier and complete BibTeX entry will be added when the preprint
+is public.
 
-The evolution of the density matrix is given by:
-$$
-\partial_{t}\hat{\rho}
-&= -i[\hat{H}_{S}+\hat{H}_{B}+\hat{H}_{SB},\hat{\rho}] \\
-&\quad + \sum_{k}\gamma_{k}
-\left(\hat{b}_{k}\hat{\rho}\hat{b}_{k}^{\dagger}
--0.5\{\hat{b}_{k}^{\dagger}\hat{b}_{k},\hat{\rho}\}\right).
-$$
- 
-The matrix $h_{kk^{\prime}}$, the coupling strengths $g_{k}$, and the damping rates $\gamma_{k}$ are read from `parameters.json`.
+## Development
 
-The initial state of the system is a product state. The initial state of the bath is the thermal state at temperature T. The initial state of the system is the center site of the chain.
+Contributions and issue reports are welcome. The fast validation suite is:
+
+```bash
+JAX_ENABLE_X64=1 python -m pytest -m "not gpu and not cpu"
+python -m ruff check src tests
+python -m ruff format --check src tests
+```
+
+GPU checks are marked `gpu` and should be run on a CUDA compute node rather
+than a shared login node. See the documentation for the full testing workflow.
+
+## License
+
+`scalabath` is distributed under the [MIT License](LICENSE).

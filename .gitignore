@@ -12,8 +12,12 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+.codex/
+.agents/
 build/
 scratch/
+SupplementaryMaterials/
+Manuscript/
 develop-eggs/
 dist/
 downloads/
