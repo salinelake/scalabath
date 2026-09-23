@@ -29,6 +29,7 @@ classifiers = [
 dependencies = [
   "jax>=0.4.30",
   "numpy>=1.26",
+  "realtimebath>=0.1.0",
 ]
 
 [project.optional-dependencies]

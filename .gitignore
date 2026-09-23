@@ -12,11 +12,12 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+jobs/
 .codex/
 .agents/
 build/
 scratch/
-SupplementaryMaterials/
+SupplementaryMaterial/
 Manuscript/
 develop-eggs/
 dist/
