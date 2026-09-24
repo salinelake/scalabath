@@ -160,8 +160,17 @@ release and the accompanying paper:
 > *Scalable simulation of non-Markovian quantum transport by stochastic-phase
 > bath reduction.*
 
-The arXiv identifier and complete BibTeX entry will be added when the preprint
-is public.
+The paper: 
+
+> @misc{huang2026scalablesimulationnonmarkovianquantum,
+>       title={Scalable simulation of non-Markovian quantum transport by stochastic-phase bath reduction}, 
+>       author={Zhen Huang and Lin Lin and Pinchen Xie},
+>       year={2026},
+>       eprint={2609.28318},
+>       archivePrefix={arXiv},
+>       primaryClass={quant-ph},
+>       url={https://arxiv.org/abs/2609.28318}, 
+> }
 
 ## Development
 
