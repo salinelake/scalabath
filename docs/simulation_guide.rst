@@ -32,6 +32,16 @@ Solver overview
 Dense Lindblad evolution
 ------------------------
 
+``LindbladSimulation.step`` is a first-order map. With
+:math:`A = I - i dt H_{\mathrm{eff}}`,
+
+.. math::
+
+   \rho \leftarrow A\rho A^\dagger + dt \sum_k L_k \rho L_k^\dagger,
+
+using the same input :math:`\rho` for every channel, followed by division by
+:math:`\mathrm{Re}\,\mathrm{Tr}\,\rho`. The local error is :math:`O(dt^2)`.
+
 Hamiltonians and jump operators may be supplied at construction time. A
 rank-two input is broadcast across the ensemble batch.
 

@@ -61,6 +61,99 @@ def test_lindblad_simulation_preserves_trace_for_one_step() -> None:
     np.testing.assert_allclose(np.asarray(jnp.trace(rho[0])), np.asarray(1.0 + 0.0j), atol=1e-12)
 
 
+def _lindblad_population(rho: jnp.ndarray, site: int) -> float:
+    return float(np.real(np.asarray(rho[0, site, site])))
+
+
+def test_lindblad_step_restores_trace_and_converges_for_closed_system() -> None:
+    local = tls(dtype=jnp.complex128)
+    hamiltonian = 0.3 * local.sigma_x
+    rho0 = jnp.asarray([[1, 0], [0, 0]], dtype=jnp.complex128)
+    total_time = 1.0
+    unitary = UnitarySimulation(
+        2,
+        dt=total_time,
+        hamiltonian=hamiltonian,
+        dtype=jnp.complex128,
+    )
+    unitary.state = jnp.asarray([1, 0], dtype=jnp.complex128)
+    psi = unitary.step()[0]
+    exact = psi[:, None] * jnp.conjugate(psi[None, :])
+
+    errors = []
+    for dt in (0.1, 0.025):
+        simulation = LindbladSimulation(
+            2,
+            dt=dt,
+            hamiltonian=hamiltonian,
+            dtype=jnp.complex128,
+        )
+        simulation.density_matrices = rho0
+        rho = simulation.step(n_steps=int(round(total_time / dt)))
+        np.testing.assert_allclose(np.asarray(jnp.trace(rho[0])), 1.0 + 0.0j, atol=1e-10)
+        errors.append(float(jnp.max(jnp.abs(rho[0] - exact))))
+
+    assert errors[1] < 0.5 * errors[0]
+
+
+def test_lindblad_step_decays_the_state_emptied_by_sigma_minus() -> None:
+    local = tls(dtype=jnp.complex128)
+    rho0 = jnp.asarray([[1, 0], [0, 0]], dtype=jnp.complex128)
+    total_time = 0.2
+    exact_population = float(np.exp(-total_time))
+
+    errors = []
+    for dt in (0.05, 0.0125):
+        simulation = LindbladSimulation(
+            2,
+            dt=dt,
+            jump_operators=[local.sigma_minus],
+            dtype=jnp.complex128,
+        )
+        simulation.density_matrices = rho0
+        rho = simulation.step(n_steps=int(round(total_time / dt)))
+        np.testing.assert_allclose(np.asarray(jnp.trace(rho[0])), 1.0 + 0.0j, atol=1e-10)
+        errors.append(abs(_lindblad_population(rho, 0) - exact_population))
+
+    assert errors[1] < 0.5 * errors[0]
+
+
+def test_lindblad_step_applies_jump_channels_to_the_same_state() -> None:
+    local = tls(dtype=jnp.complex128)
+    dt = 0.25
+    rho0 = jnp.asarray([[0.7, 0.2], [0.2, 0.3]], dtype=jnp.complex128)
+    jumps = (local.sigma_minus, 0.5 * local.sigma_plus)
+    simulation = LindbladSimulation(
+        2,
+        dt=dt,
+        jump_operators=jumps,
+        dtype=jnp.complex128,
+    )
+    simulation.density_matrices = rho0
+
+    rho = simulation.step()
+
+    loss = sum(adjoint(jump) @ jump for jump in jumps)
+    propagator = jnp.eye(2, dtype=jnp.complex128) - dt * 0.5 * loss
+    updated = propagator @ rho0 @ adjoint(propagator)
+    for jump in jumps:
+        updated = updated + dt * jump @ rho0 @ adjoint(jump)
+    updated = updated / jnp.real(jnp.trace(updated))
+    np.testing.assert_allclose(np.asarray(rho[0]), np.asarray(updated), atol=1e-12)
+    reversed_simulation = LindbladSimulation(
+        2,
+        dt=dt,
+        jump_operators=jumps[::-1],
+        dtype=jnp.complex128,
+    )
+    reversed_simulation.density_matrices = rho0
+    np.testing.assert_allclose(
+        np.asarray(reversed_simulation.step()[0]),
+        np.asarray(rho[0]),
+        atol=1e-12,
+    )
+
+
 def test_lindblad_simulation_observes_density_matrix_expectation() -> None:
     rho0 = jnp.asarray([[1, 0], [0, 0]], dtype=jnp.complex128)
     observable = jnp.asarray([[1, 0], [0, 0]], dtype=jnp.complex128)

@@ -107,10 +107,13 @@ def _dense_lindblad_step(
     jump_operators: Array,
     dt: Array,
 ) -> Array:
-    """
-    Solve one Lindblad step with a structure-preserving integrator.
+    """Advance one first-order Lindblad step and restore the trace.
 
-    Positivity is preserved by construction. Trace is not exactly conserved.
+    The update is ``A rho A† + dt sum_k L_k rho L_k†``, where
+    ``A = I - i dt H_eff`` and ``H_eff = H - i/2 sum_k L_k† L_k``.
+    Every jump uses the input density matrix. The result is divided by the
+    real part of its trace. The local truncation error is ``O(dt**2)``.
+
     Args:
         density_matrices: Density matrices with shape (batch, hilbert_dim, hilbert_dim).
         hamiltonian: Hamiltonian with shape (batch, hilbert_dim, hilbert_dim).
@@ -119,17 +122,16 @@ def _dense_lindblad_step(
     Returns:
         Density matrices with shape (batch, hilbert_dim, hilbert_dim).
     """
-    ## get the effective Hamiltonian H_eff = H - 1/2 * i * \sum_k L_k^\dagger L_k
+    ## H_eff = H - i/2 sum_k L_k† L_k
     ham_eff = hamiltonian * 1.0
     for jump_operator in jump_operators:
         ham_eff = ham_eff - 1j * 0.5 * adjoint(jump_operator) @ jump_operator
-    ## first step: rho -> (1-i*dt*H_eff)rho(1+i*dt*H_eff)
     identity = jnp.eye(density_matrices.shape[-1], dtype=density_matrices.dtype)
     rho = ABAd(identity[None, :, :] - 1j * dt * ham_eff, density_matrices)
-    ## second step: rho -> rho + dt * \sum_k L_k \rho L_k^\dagger
     for jump_operator in jump_operators:
-        rho += dt * ABAd(jump_operator, rho)
-    return rho
+        rho = rho + dt * ABAd(jump_operator, density_matrices)
+    trace = jnp.real(jnp.trace(rho, axis1=-2, axis2=-1))
+    return rho / trace[:, None, None]
 
 
 @jax.jit
@@ -222,7 +224,12 @@ class LindbladSimulation:
         return self.density_matrices
 
     def step(self, n_steps: int = 1) -> Array:
-        """Advance by ``n_steps`` structure preserving Lindblad steps."""
+        """Advance by ``n_steps`` first-order Lindblad steps.
+
+        Each step applies ``I - i dt H_eff`` and every jump channel to the
+        same density matrix, then divides by the real part of the trace.
+        The local truncation error is ``O(dt**2)``.
+        """
 
         n_steps = positive_int(n_steps, "n_steps")
         for _ in range(n_steps):
