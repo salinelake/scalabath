@@ -11,9 +11,10 @@ single-quasiparticle transport with identical, independent local
 environments.
 
 The package combines host-side operator construction with JAX-compiled
-time-evolution kernels. Its tensorized solvers keep states in the layout
-``(batch, system_dim, *boson_dims)`` and accept optional JAX sharding for GPU
-execution.
+time-evolution kernels. Tensorized system–bath states use the layout
+``(batch, system_dim, *boson_dims)``.
+:class:`~scalabath.simulations_unitary.SystemBathUnitarySimulation` accepts
+optional JAX sharding over the system axis.
 
 Start with :doc:`installation` and :doc:`quickstart`. Readers using the method
 from the accompanying paper should also read :doc:`spa` and the convergence

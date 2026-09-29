@@ -31,18 +31,24 @@ A small CPU smoke run is:
        --batch-size 1 \
        --run-id 0
 
-The script records sampled occupations, phases, populations, and a JSON
-metadata file. Use distinct ``run-id`` values for independent ensembles.
+The script writes sampled occupations, phases, populations, and a JSON
+metadata file. ``--run-id`` selects the output filename. Phases and thermal
+occupations come from NumPy's global random state, and this script does not
+seed it from ``--run-id``. Set that state before starting the process when a
+run must be reproduced. A fresh process begins from the same default state, so
+a different ``--run-id`` repeats the same samples.
 
 Bacteriochlorophyll chain
 -------------------------
 
 The `BChl example
 <https://github.com/salinelake/scalabath/tree/main/examples/BCHL_chain>`_ evolves
-a 19-site chain coupled to six compressed, damped bosonic modes. The coupled
-bath Hamiltonian, couplings, and damping parameters are read from
-``parameters.json`` and propagated with
+a 19-site chain coupled to six compressed, damped bosonic modes.
+``00.preprocess.py`` writes ``parameters.json`` by compressing the original
+50-mode bath with ``realtimebath``. ``01.main.py`` reads that file and
+propagates the chain with
 :class:`~scalabath.simulations_lindblad.CoupledLindbladTrajectorySimulation`.
+``--run-id`` seeds the phase sampler.
 
 A reduced-cutoff smoke command is:
 

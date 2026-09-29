@@ -141,8 +141,10 @@ basis.
 Multi-GPU sharding
 ------------------
 
-The tensorized state can be sharded over its system axis. The partition
-specification must match ``(batch, system, *bath_modes)``:
+:class:`~scalabath.simulations_unitary.SystemBathUnitarySimulation` can shard
+its tensorized state over the system axis. Pass that placement through the
+``sharding`` argument. The partition specification must match
+``(batch, system, *bath_modes)``:
 
 .. code-block:: python
 

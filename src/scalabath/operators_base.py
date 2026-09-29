@@ -93,8 +93,8 @@ class tls:
         """Return a named two-level-system operator.
 
         Accepted descriptors are ``"X"``, ``"Y"``, ``"Z"``, ``"I"``,
-        ``"U"``/``"+"``/``"P"`` for raising, ``"D"``/``"-"``/``"M"``
-        for lowering, and ``"N"`` for ``sigma_plus @ sigma_minus``.
+        ``"U"``/``"+"`` for raising, ``"D"``/``"-"`` for lowering, and
+        ``"N"`` for ``sigma_plus @ sigma_minus``.
         """
         try:
             return self.descriptors_dict[descriptor]
@@ -211,11 +211,11 @@ class tight_binding_1d:
         the marked site to the right. The sequence must contain zero or one
         non-``"X"`` character.
         Example:
-            >>> tb = tight_binding_1d(3)
+            >>> tb = tight_binding_1d(3, periodic=False)
             >>> tb.get_operator("XRX")
-            Array([[0.+0.j, 1.+0.j, 0.+0.j],
+            Array([[0.+0.j, 0.+0.j, 0.+0.j],
                    [0.+0.j, 0.+0.j, 0.+0.j],
-                   [0.+0.j, 0.+0.j, 0.+0.j]], dtype=complex64)
+                   [0.+0.j, 1.+0.j, 0.+0.j]], dtype=complex64)
         """
 
         if len(descriptor) != self.n_sites:
@@ -314,11 +314,13 @@ class tight_binding_2d:
         The x-direction bonds connect ``(x, y)`` to ``(x + 1, y)`` with
         ``amplitude[0]``. The y-direction bonds connect ``(x, y)`` to
         ``(x, y + 1)`` with ``amplitude[1]``.
+
+        Raises:
+            ValueError: If ``nx`` or ``ny`` is 2. Place those bonds with
+                :meth:`hopping` instead.
         """
         if self.nx == 2 or self.ny == 2:
-            raise ValueError(
-                "nearest_neighbor_hopping will double-count hopping amplitudes for 2x2 lattices"
-            )
+            raise ValueError("nearest_neighbor_hopping does not support a lattice axis of length 2")
         total = jnp.zeros((self.hilbert_dim, self.hilbert_dim), dtype=self.dtype)
         directions = ((1, 0), (0, 1))
         for x in range(self.nx):
@@ -343,11 +345,13 @@ class tight_binding_2d:
         ``amplitude[0]``. The y-direction and diagonal bonds connect
         ``(x, y)`` to ``(x, y + 1)`` and ``(x + 1, y + 1)`` with
         ``amplitude[1]``.
+
+        Raises:
+            ValueError: If ``nx`` or ``ny`` is 2. Place those bonds with
+                :meth:`hopping` instead.
         """
         if self.nx == 2 or self.ny == 2:
-            raise ValueError(
-                "triangular_hopping will double-count hopping amplitudes for 2x2 lattices"
-            )
+            raise ValueError("triangular_hopping does not support a lattice axis of length 2")
         amp_x, amp_y = amplitude
         total = jnp.zeros((self.hilbert_dim, self.hilbert_dim), dtype=self.dtype)
         directions = (((1, 0), amp_x), ((0, 1), amp_y), ((1, 1), amp_y))
@@ -367,14 +371,21 @@ class tight_binding_2d:
         return total
 
     def get_operator(self, descriptor_sequence: str) -> Array:
-        """Return a sequence-defined one-particle tight-binding operator.
+        """Sequence descriptors are not available for this lattice.
 
-        ``"X"`` denotes identity on a site, ``"N"`` an on-site projector,
-        ``"L"`` a hop from the marked site to the left, and ``"R"`` a hop from
-        the marked site to the right. The sequence must contain zero or one
-        non-``"X"`` character.
+        Args:
+            descriptor_sequence: Unused. The 1D labels ``"X"``, ``"N"``,
+                ``"L"``, and ``"R"`` have no 2D implementation.
+
+        Raises:
+            NotImplementedError: Always. Build operators with :meth:`hopping`,
+                :meth:`on_site`, :meth:`nearest_neighbor_hopping`, or
+                :meth:`triangular_hopping`.
         """
-        raise NotImplementedError("get_operator has not been implemented for tight_binding_2d")
+        raise NotImplementedError(
+            "get_operator is not implemented for tight_binding_2d; "
+            "use hopping, on_site, nearest_neighbor_hopping, or triangular_hopping"
+        )
 
 
 __all__ = ["boson", "tight_binding_1d", "tight_binding_2d", "tls"]

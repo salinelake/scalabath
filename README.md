@@ -24,7 +24,8 @@ averaging while avoiding one explicit bath copy per lattice site.
 - Stochastic Lindblad trajectories for coupled pseudomode baths.
 - Batched simulations with complex, realization-dependent operator
   prefactors.
-- Optional JAX `NamedSharding` for distributing the system axis across GPUs.
+- Optional JAX `NamedSharding` on `SystemBathUnitarySimulation`, distributing
+  the system axis across GPUs.
 - Operator builders for bosons, two-level systems, 1D chains, 2D lattices, and
   composed Hilbert spaces.
 
@@ -182,8 +183,9 @@ python -m ruff check src tests
 python -m ruff format --check src tests
 ```
 
-GPU checks are marked `gpu` and should be run on a CUDA compute node rather
-than a shared login node. See the documentation for the full testing workflow.
+The `cpu` and `gpu` pytest markers are registered for longer runs. The current
+suite is marked `unit`, so the command above is the full test run. See the
+documentation for the testing workflow.
 
 ## License
 

@@ -10,22 +10,19 @@ Set up an editable checkout with all development tools:
 Fast validation
 ---------------
 
-Run the unit tier and static checks before submitting changes:
+The current tests are marked ``unit``. The ``cpu`` and ``gpu`` markers are
+registered for longer runs, and no test uses them yet. Until those tests
+exist, both selections below run the same unit suite:
 
 .. code-block:: console
 
    $ JAX_ENABLE_X64=1 python -m pytest -m "not gpu and not cpu"
+   $ JAX_ENABLE_X64=1 python -m pytest -m "not gpu"
    $ python -m ruff check src tests
    $ python -m ruff format --check src tests
 
-Longer CPU tests are selected with:
-
-.. code-block:: console
-
-   $ JAX_ENABLE_X64=1 python -m pytest -m "not gpu"
-
-Tests marked ``gpu`` require a CUDA device. On Perlmutter, submit them to a GPU
-compute node; do not execute heavy simulations on a login node.
+Run any future test marked ``gpu`` on a CUDA compute node. On Perlmutter, keep
+heavy simulations off the login node.
 
 Documentation
 -------------

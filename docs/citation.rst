@@ -1,15 +1,26 @@
 Citation
 ========
 
-If ``scalabath`` contributes to published work, cite the archived software
-release used for the calculation and the accompanying paper:
+If ``scalabath`` contributes to published work, cite the software release used
+for the calculation and the accompanying paper:
 
    *Scalable simulation of non-Markovian quantum transport by stochastic-phase
    bath reduction.*
 
-The arXiv identifier and complete BibTeX entry will be added when the preprint
-is public. Until then, record the package version and Git commit in internal
-results so the exact software state remains identifiable.
+.. code-block:: bibtex
+
+   @misc{huang2026scalablesimulationnonmarkovianquantum,
+         title={Scalable simulation of non-Markovian quantum transport by stochastic-phase bath reduction},
+         author={Zhen Huang and Lin Lin and Pinchen Xie},
+         year={2026},
+         eprint={2609.28318},
+         archivePrefix={arXiv},
+         primaryClass={quant-ph},
+         url={https://arxiv.org/abs/2609.28318},
+   }
+
+Record the package version and Git commit with the result so the exact
+software state remains identifiable.
 
 License
 -------

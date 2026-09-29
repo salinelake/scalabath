@@ -67,8 +67,10 @@ matrix ``Gamma``, and coupling vector ``epsilon`` chosen so that
    c(t) \simeq \epsilon^\dagger
    \exp[(-iK-\Gamma)t]\epsilon
 
-over the required time window. Bath fitting is outside the current package;
-the resulting matrices are inputs to the simulation classes. In the
+over the required time window. The simulation classes take ``K``, ``Gamma``,
+and ``epsilon`` as inputs. ``examples/BCHL_chain/00.preprocess.py`` builds
+those matrices for the bacteriochlorophyll bath with ``realtimebath``, which
+is installed with ``scalabath``. In the
 coupled-Lindblad convention used by the accompanying work, ``Gamma`` is half
 the coefficient that would appear as the conventional single-mode Lindblad
 rate. Keep that convention explicit when translating fitted parameters into
